@@ -1,0 +1,31 @@
+<ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+    <!-- Tema Translucido. A transparencia NAO vem da cor: ela e aplicada a janela
+         inteira por SetLayeredWindowAttributes (cerca de 84% de opacidade), porque
+         esse e o unico mecanismo que funciona com o widget hospedado na area de
+         trabalho, onde a janela e filha do shell. Aqui as cores sao opacas e o
+         contraste do texto e reforcado para continuar legivel sobre papeis de
+         parede claros e escuros. -->
+    <SolidColorBrush x:Key="SurfaceBrush" Color="#FF12121A" />
+    <SolidColorBrush x:Key="SurfaceBorderBrush" Color="#2EFFFFFF" />
+    <SolidColorBrush x:Key="TextPrimaryBrush" Color="#FFFFFFFF" />
+    <SolidColorBrush x:Key="TextSecondaryBrush" Color="#FFB6B6BE" />
+    <SolidColorBrush x:Key="TextMutedBrush" Color="#FF7B7B85" />
+    <SolidColorBrush x:Key="HoverBrush" Color="#1FFFFFFF" />
+    <SolidColorBrush x:Key="PressedBrush" Color="#30FFFFFF" />
+    <SolidColorBrush x:Key="FieldBackgroundBrush" Color="#B31C1C24" />
+    <SolidColorBrush x:Key="FieldBorderBrush" Color="#40FFFFFF" />
+    <SolidColorBrush x:Key="CheckboxBorderBrush" Color="#80FFFFFF" />
+    <SolidColorBrush x:Key="CheckboxFillBrush" Color="#FFFFFFFF" />
+    <SolidColorBrush x:Key="CheckboxGlyphBrush" Color="#FF14141C" />
+    <SolidColorBrush x:Key="ScrollThumbBrush" Color="#3DFFFFFF" />
+    <SolidColorBrush x:Key="ScrollThumbHoverBrush" Color="#66FFFFFF" />
+    <SolidColorBrush x:Key="DropIndicatorBrush" Color="#FF9CC4FF" />
+    <SolidColorBrush x:Key="OverlayBrush" Color="#F212121A" />
+    <SolidColorBrush x:Key="DangerBrush" Color="#FFFF8080" />
+    <SolidColorBrush x:Key="WarningBrush" Color="#FFFFC46B" />
+    <SolidColorBrush x:Key="ProgressTrackBrush" Color="#26FFFFFF" />
+    <SolidColorBrush x:Key="ProgressFillBrush" Color="#FF9CC4FF" />
+
+</ResourceDictionary>

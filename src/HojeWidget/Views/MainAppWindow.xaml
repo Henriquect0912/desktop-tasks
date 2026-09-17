@@ -1,0 +1,2221 @@
+<Window x:Class="HojeWidget.Views.MainAppWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="clr-namespace:HojeWidget.ViewModels"
+        Title="DesktopTasks"
+        Width="980" Height="640"
+        MinWidth="760" MinHeight="480"
+        WindowStartupLocation="CenterScreen"
+        Background="{DynamicResource SurfaceBrush}"
+        Foreground="{DynamicResource TextPrimaryBrush}"
+        FontFamily="{DynamicResource UiFontFamily}"
+        FontSize="13"
+        UseLayoutRounding="True"
+        TextOptions.TextFormattingMode="Display">
+
+    <Window.Resources>
+        <!-- Linha de tarefa, reaproveitada por Hoje, Algum dia e pelas colunas da semana. -->
+        <DataTemplate x:Key="TaskRowTemplate" DataType="{x:Type vm:TaskItemViewModel}">
+            <Border x:Name="RowRoot"
+                    Background="Transparent"
+                    CornerRadius="6"
+                    Padding="8,6"
+                    Margin="0,1"
+                    PreviewMouseMove="TaskRow_PreviewMouseMove"
+                    PreviewMouseLeftButtonDown="TaskRow_PreviewMouseLeftButtonDown">
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                    </Grid.RowDefinitions>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+
+                    <CheckBox Grid.Row="0" Grid.Column="0"
+                              Margin="0,1,8,0"
+                              Style="{StaticResource TaskCheckBox}"
+                              IsChecked="{Binding IsCompleted}"
+                              Click="TaskCheckBox_Click" />
+
+                    <StackPanel Grid.Row="0" Grid.Column="1" VerticalAlignment="Center">
+                        <TextBlock x:Name="TitleText"
+                                   TextWrapping="Wrap"
+                                   Foreground="{DynamicResource TextPrimaryBrush}">
+                            <Run Text="{Binding RoutinePrefix, Mode=OneWay}" FontSize="11"
+                                 Foreground="{DynamicResource TextMutedBrush}" />
+                            <Run Text="{Binding Title, Mode=OneWay}" />
+                        </TextBlock>
+                        <TextBlock Text="{Binding Subtitle}"
+                                   Margin="0,1,0,0"
+                                   FontSize="11"
+                                   TextWrapping="Wrap"
+                                   Foreground="{DynamicResource TextMutedBrush}"
+                                   Visibility="{Binding HasSubtitle, Converter={StaticResource BoolToVisibility}}" />
+                    </StackPanel>
+
+                    <!-- V0.7: so alta e baixa aparecem; prioridade normal e silencio. -->
+                    <Border x:Name="PriorityBadge"
+                            Grid.Row="0" Grid.Column="2"
+                            Margin="0,2,26,0"
+                            VerticalAlignment="Top"
+                            CornerRadius="8" Padding="6,1"
+                            BorderThickness="1"
+                            BorderBrush="{DynamicResource FieldBorderBrush}"
+                            Visibility="{Binding HasPriorityBadge, Converter={StaticResource BoolToVisibility}}">
+                        <TextBlock Text="{Binding PriorityBadge}" FontSize="9"
+                                   Foreground="{DynamicResource TextSecondaryBrush}" />
+                    </Border>
+
+                    <Button x:Name="MenuButton"
+                            Grid.Row="0" Grid.Column="2"
+                            Style="{StaticResource RowMenuButton}"
+                            Content="&#x22EF;"
+                            Opacity="0"
+                            Visibility="{Binding CanEdit, Converter={StaticResource BoolToVisibility}}"
+                            Click="RowMenuButton_Click" />
+
+                    <StackPanel Grid.Row="1" Grid.Column="1" Grid.ColumnSpan="2"
+                                Orientation="Horizontal"
+                                Margin="0,2,0,0"
+                                Visibility="{Binding IsMenuOpen, Converter={StaticResource BoolToVisibility}}">
+                        <Button Style="{StaticResource GhostButton}" Content="Editar" Padding="6,2" Click="EditMenuItem_Click" />
+                        <Button Style="{StaticResource GhostButton}" Content="Excluir" Padding="6,2" Margin="4,0,0,0"
+                                Foreground="{DynamicResource DangerBrush}" Click="DeleteMenuItem_Click" />
+                        <Button Style="{StaticResource GhostButton}" Content="Algum dia" Padding="6,2" Margin="4,0,0,0"
+                                ToolTip="Tirar do planejamento" Click="SomedayMenuItem_Click" />
+                        <Button Style="{StaticResource GhostButton}" Content="Mover para..." Padding="6,2" Margin="4,0,0,0"
+                                ToolTip="Colocar dentro de um projeto ou entrega" Click="MoveMenuItem_Click" />
+                    </StackPanel>
+                </Grid>
+            </Border>
+
+            <DataTemplate.Triggers>
+                <DataTrigger Binding="{Binding IsCompleted}" Value="True">
+                    <Setter TargetName="TitleText" Property="TextDecorations" Value="Strikethrough" />
+                    <Setter TargetName="TitleText" Property="Foreground" Value="{DynamicResource TextMutedBrush}" />
+                    <Setter TargetName="RowRoot" Property="Opacity" Value="0.62" />
+                </DataTrigger>
+                <Trigger SourceName="RowRoot" Property="IsMouseOver" Value="True">
+                    <Setter TargetName="MenuButton" Property="Opacity" Value="1" />
+                    <Setter TargetName="RowRoot" Property="Background" Value="{DynamicResource HoverBrush}" />
+                </Trigger>
+                <DataTrigger Binding="{Binding IsMenuOpen}" Value="True">
+                    <Setter TargetName="MenuButton" Property="Opacity" Value="1" />
+                </DataTrigger>
+                <DataTrigger Binding="{Binding IsHighPriority}" Value="True">
+                    <Setter TargetName="PriorityBadge" Property="BorderBrush" Value="{DynamicResource WarningBrush}" />
+                </DataTrigger>
+            </DataTemplate.Triggers>
+        </DataTemplate>
+
+        <!-- Botão de dia da semana, no formulário de rotina -->
+        <Style x:Key="DayToggle" TargetType="ToggleButton">
+            <Setter Property="Width" Value="44" />
+            <Setter Property="Height" Value="28" />
+            <Setter Property="Margin" Value="0,0,4,4" />
+            <Setter Property="FontSize" Value="11" />
+            <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="Foreground" Value="{DynamicResource TextSecondaryBrush}" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="ToggleButton">
+                        <Border x:Name="Root" CornerRadius="6" Background="Transparent"
+                                BorderThickness="1" BorderBrush="{DynamicResource FieldBorderBrush}">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Root" Property="Background" Value="{DynamicResource HoverBrush}" />
+                            </Trigger>
+                            <Trigger Property="IsChecked" Value="True">
+                                <Setter TargetName="Root" Property="Background" Value="{DynamicResource PressedBrush}" />
+                                <Setter TargetName="Root" Property="BorderBrush" Value="{DynamicResource DropIndicatorBrush}" />
+                                <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}" />
+                                <Setter Property="FontWeight" Value="SemiBold" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <!-- Botão da navegação lateral -->
+        <Style x:Key="NavButton" TargetType="RadioButton">
+            <Setter Property="Foreground" Value="{DynamicResource TextSecondaryBrush}" />
+            <Setter Property="FontSize" Value="13" />
+            <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="Margin" Value="0,1" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="RadioButton">
+                        <Border x:Name="Root" Background="Transparent" CornerRadius="6" Padding="12,8">
+                            <ContentPresenter VerticalAlignment="Center" />
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Root" Property="Background" Value="{DynamicResource HoverBrush}" />
+                            </Trigger>
+                            <Trigger Property="IsChecked" Value="True">
+                                <Setter TargetName="Root" Property="Background" Value="{DynamicResource PressedBrush}" />
+                                <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}" />
+                                <Setter Property="FontWeight" Value="SemiBold" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <!-- Rótulo de grupo da navegação -->
+        <Style x:Key="NavGroupLabel" TargetType="TextBlock">
+            <Setter Property="FontSize" Value="10" />
+            <Setter Property="FontWeight" Value="SemiBold" />
+            <Setter Property="Margin" Value="12,12,0,4" />
+            <Setter Property="Foreground" Value="{DynamicResource TextMutedBrush}" />
+        </Style>
+
+        <!-- Título de seção -->
+        <Style x:Key="SectionTitle" TargetType="TextBlock">
+            <Setter Property="FontWeight" Value="SemiBold" />
+            <Setter Property="VerticalAlignment" Value="Center" />
+            <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}" />
+        </Style>
+
+        <!-- Nível de domínio de um conteúdo de prova -->
+        <Style x:Key="MasteryToggle" TargetType="RadioButton">
+            <Setter Property="Margin" Value="0,0,4,0" />
+            <Setter Property="FontSize" Value="10" />
+            <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="Foreground" Value="{DynamicResource TextSecondaryBrush}" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="RadioButton">
+                        <Border x:Name="Root" CornerRadius="10" Background="Transparent" Padding="8,3"
+                                BorderThickness="1" BorderBrush="{DynamicResource FieldBorderBrush}">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Root" Property="Background" Value="{DynamicResource HoverBrush}" />
+                            </Trigger>
+                            <Trigger Property="IsChecked" Value="True">
+                                <Setter TargetName="Root" Property="Background" Value="{DynamicResource PressedBrush}" />
+                                <Setter TargetName="Root" Property="BorderBrush" Value="{DynamicResource DropIndicatorBrush}" />
+                                <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}" />
+                                <Setter Property="FontWeight" Value="SemiBold" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <!-- Uma linha do plano do dia: posição, título, explicação e estimativa -->
+        <DataTemplate x:Key="PlanItemTemplate" DataType="{x:Type vm:PlanItemViewModel}">
+            <Border Background="Transparent" CornerRadius="6" Padding="10,8" Margin="0,2"
+                    BorderThickness="1" BorderBrush="{DynamicResource SurfaceBorderBrush}">
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="28" />
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+
+                    <TextBlock Grid.Column="0" Text="{Binding PositionText}" FontWeight="SemiBold"
+                               Foreground="{DynamicResource TextMutedBrush}" />
+
+                    <StackPanel Grid.Column="1">
+                        <TextBlock Text="{Binding Title}" TextWrapping="Wrap"
+                                   Foreground="{DynamicResource TextPrimaryBrush}" />
+                        <TextBlock Text="{Binding ParentTitle}" FontSize="11" Margin="0,1,0,0"
+                                   Foreground="{DynamicResource TextMutedBrush}"
+                                   Visibility="{Binding HasParent, Converter={StaticResource BoolToVisibility}}" />
+                        <!-- A explicação vem dos mesmos fatores que produziram a ordem. -->
+                        <TextBlock Text="{Binding Explanation}" FontSize="11" Margin="0,2,0,0" TextWrapping="Wrap"
+                                   Foreground="{DynamicResource TextSecondaryBrush}" />
+                    </StackPanel>
+
+                    <TextBlock Grid.Column="2" Text="{Binding EstimateText}" FontSize="11" Margin="10,0,0,0"
+                               VerticalAlignment="Center"
+                               Foreground="{DynamicResource TextSecondaryBrush}" />
+                </Grid>
+            </Border>
+        </DataTemplate>
+
+        <!-- Uma prova ou projeto na lista lateral das seções de estrutura -->
+        <DataTemplate x:Key="ContainerListTemplate" DataType="{x:Type vm:ContainerListItemViewModel}">
+            <Border x:Name="Root" CornerRadius="8" Padding="10,8" Margin="0,2"
+                    Background="Transparent" BorderThickness="1" BorderBrush="Transparent"
+                    MouseLeftButtonUp="ContainerItem_Click">
+                <StackPanel>
+                    <TextBlock Text="{Binding Title}" TextWrapping="Wrap"
+                               Foreground="{DynamicResource TextPrimaryBrush}" />
+                    <TextBlock Text="{Binding DueText}" FontSize="11" Margin="0,2,0,0"
+                               Foreground="{DynamicResource TextMutedBrush}" />
+                    <Grid Margin="0,6,0,0" HorizontalAlignment="Left">
+                        <Border Width="150" Height="4" CornerRadius="2"
+                                Background="{DynamicResource ProgressTrackBrush}" HorizontalAlignment="Left" />
+                        <Border Width="{Binding BarWidth}" Height="4" CornerRadius="2"
+                                Background="{DynamicResource ProgressFillBrush}" HorizontalAlignment="Left" />
+                    </Grid>
+                    <TextBlock Text="{Binding ProgressText}" FontSize="11" Margin="0,4,0,0"
+                               Foreground="{DynamicResource TextSecondaryBrush}" />
+                </StackPanel>
+            </Border>
+            <DataTemplate.Triggers>
+                <Trigger SourceName="Root" Property="IsMouseOver" Value="True">
+                    <Setter TargetName="Root" Property="Background" Value="{DynamicResource HoverBrush}" />
+                </Trigger>
+                <DataTrigger Binding="{Binding IsSelected}" Value="True">
+                    <Setter TargetName="Root" Property="Background" Value="{DynamicResource PressedBrush}" />
+                    <Setter TargetName="Root" Property="BorderBrush" Value="{DynamicResource DropIndicatorBrush}" />
+                </DataTrigger>
+                <DataTrigger Binding="{Binding IsCompleted}" Value="True">
+                    <Setter TargetName="Root" Property="Opacity" Value="0.55" />
+                </DataTrigger>
+            </DataTemplate.Triggers>
+        </DataTemplate>
+
+        <!-- Projeto ou entrega: a mesma tela serve as duas seções, porque a
+             mecânica é idêntica. O que muda são os textos, vindos do modelo. -->
+        <DataTemplate x:Key="ContainerSectionTemplate" DataType="{x:Type vm:ContainerSectionViewModel}">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="290" />
+                    <ColumnDefinition Width="*" />
+                </Grid.ColumnDefinitions>
+
+                <!-- Lista -->
+                <Grid Grid.Column="0" Margin="0,0,14,0">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="*" />
+                    </Grid.RowDefinitions>
+
+                    <Grid Grid.Row="0" Margin="0,0,0,10">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Grid.Column="0" Text="{Binding Header}" Style="{StaticResource SectionTitle}" />
+                        <Button Grid.Column="1" Style="{StaticResource GhostButton}" Content="{Binding NewButtonText}"
+                                Padding="10,4" Foreground="{DynamicResource TextPrimaryBrush}"
+                                Command="{Binding OpenNewCommand}" />
+                    </Grid>
+
+                    <TextBlock Grid.Row="1" Text="{Binding EmptyText}" TextWrapping="Wrap" VerticalAlignment="Top"
+                               Foreground="{DynamicResource TextSecondaryBrush}"
+                               Visibility="{Binding IsEmpty, Converter={StaticResource BoolToVisibility}}" />
+
+                    <ScrollViewer Grid.Row="1" Style="{StaticResource WidgetScrollViewer}">
+                        <ItemsControl ItemsSource="{Binding Items}" ItemTemplate="{StaticResource ContainerListTemplate}" />
+                    </ScrollViewer>
+                </Grid>
+
+                <!-- Detalhe -->
+                <Grid Grid.Column="1" Visibility="{Binding HasSelection, Converter={StaticResource BoolToVisibility}}">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="*" />
+                    </Grid.RowDefinitions>
+
+                    <TextBlock Grid.Row="0" Text="{Binding DetailTitle}" FontSize="15" FontWeight="SemiBold"
+                               TextWrapping="Wrap" Foreground="{DynamicResource TextPrimaryBrush}" />
+                    <TextBlock Grid.Row="0" Text="{Binding DetailDue}" HorizontalAlignment="Right" VerticalAlignment="Center"
+                               FontSize="11" Foreground="{DynamicResource TextSecondaryBrush}" />
+
+                    <!-- Progresso por quantidade concluída, sem peso escondido -->
+                    <StackPanel Grid.Row="1" Margin="0,12,0,0">
+                        <Grid HorizontalAlignment="Left">
+                            <Border Width="260" Height="6" CornerRadius="3"
+                                    Background="{DynamicResource ProgressTrackBrush}" HorizontalAlignment="Left" />
+                            <Border Width="{Binding ProgressBarWidth}" Height="6" CornerRadius="3"
+                                    Background="{DynamicResource ProgressFillBrush}" HorizontalAlignment="Left" />
+                        </Grid>
+                        <TextBlock Text="{Binding ProgressText}" Margin="0,6,0,0" FontSize="12"
+                                   Foreground="{DynamicResource TextSecondaryBrush}" />
+                    </StackPanel>
+
+                    <StackPanel Grid.Row="2" Orientation="Horizontal" Margin="0,14,0,10">
+                        <Button Style="{StaticResource GhostButton}" Content="+ Nova etapa" Padding="10,4"
+                                Foreground="{DynamicResource TextPrimaryBrush}"
+                                Command="{Binding OpenSubtaskFormCommand}" />
+                        <Button Style="{StaticResource GhostButton}" Content="Distribuir automaticamente" Padding="10,4"
+                                Margin="8,0,0,0" Command="{Binding DistributeCommand}" />
+                        <Button Style="{StaticResource GhostButton}" Content="Editar" Padding="10,4" Margin="8,0,0,0"
+                                Click="EditContainer_Click" />
+                        <Button Style="{StaticResource GhostButton}" Content="Excluir" Padding="10,4" Margin="8,0,0,0"
+                                Foreground="{DynamicResource DangerBrush}"
+                                Command="{Binding RequestDeleteCommand}" />
+                    </StackPanel>
+
+                    <ScrollViewer Grid.Row="3" Style="{StaticResource WidgetScrollViewer}">
+                        <ItemsControl ItemsSource="{Binding Subtasks}" ItemTemplate="{StaticResource TaskRowTemplate}" />
+                    </ScrollViewer>
+                </Grid>
+
+                <!-- Formulário do projeto/entrega -->
+                <Border Grid.ColumnSpan="2" Background="{DynamicResource OverlayBrush}"
+                        Visibility="{Binding IsFormOpen, Converter={StaticResource BoolToVisibility}}">
+                    <Border Width="400" VerticalAlignment="Center" HorizontalAlignment="Center" Padding="20"
+                            CornerRadius="12" Background="{DynamicResource FieldBackgroundBrush}"
+                            BorderBrush="{DynamicResource FieldBorderBrush}" BorderThickness="1">
+                        <StackPanel>
+                            <TextBlock Text="{Binding FormHeader}" FontWeight="SemiBold" FontSize="15" Margin="0,0,0,14"
+                                       Foreground="{DynamicResource TextPrimaryBrush}" />
+                            <TextBlock Text="Nome" Foreground="{DynamicResource TextSecondaryBrush}" />
+                            <TextBox Style="{StaticResource WidgetTextBox}" Margin="0,6,0,16"
+                                     Text="{Binding FormTitle, UpdateSourceTrigger=PropertyChanged}" />
+
+                            <TextBlock Foreground="{DynamicResource TextSecondaryBrush}">
+                                <Run Text="Prazo" />
+                                <Run Text="(usado pela distribuição automática)" FontSize="11"
+                                     Foreground="{DynamicResource TextMutedBrush}" />
+                            </TextBlock>
+                            <StackPanel Orientation="Horizontal" Margin="0,6,0,16">
+                                <DatePicker SelectedDate="{Binding FormDueDate}" Width="150" />
+                                <Button Style="{StaticResource GhostButton}" Content="Sem prazo" Padding="8,4" Margin="8,0,0,0"
+                                        Command="{Binding ClearFormDueDateCommand}" />
+                            </StackPanel>
+
+                            <TextBlock Text="Prioridade" Foreground="{DynamicResource TextSecondaryBrush}" />
+                            <StackPanel Orientation="Horizontal" Margin="0,8,0,0">
+                                <RadioButton Content="Alta" Style="{StaticResource MasteryToggle}"
+                                             IsChecked="{Binding FormPriority, Converter={StaticResource EnumToBoolean}, ConverterParameter=High, Mode=TwoWay}" />
+                                <RadioButton Content="Normal" Style="{StaticResource MasteryToggle}"
+                                             IsChecked="{Binding FormPriority, Converter={StaticResource EnumToBoolean}, ConverterParameter=Normal, Mode=TwoWay}" />
+                                <RadioButton Content="Baixa" Style="{StaticResource MasteryToggle}"
+                                             IsChecked="{Binding FormPriority, Converter={StaticResource EnumToBoolean}, ConverterParameter=Low, Mode=TwoWay}" />
+                            </StackPanel>
+
+                            <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,18,0,0">
+                                <Button Style="{StaticResource GhostButton}" Content="Cancelar" Padding="12,6"
+                                        Command="{Binding CancelFormCommand}" />
+                                <Button Style="{StaticResource GhostButton}" Content="Salvar" Padding="12,6" Margin="8,0,0,0"
+                                        Foreground="{DynamicResource TextPrimaryBrush}"
+                                        Command="{Binding CommitFormCommand}" />
+                            </StackPanel>
+                        </StackPanel>
+                    </Border>
+                </Border>
+
+                <!-- Formulário da subtarefa -->
+                <Border Grid.ColumnSpan="2" Background="{DynamicResource OverlayBrush}"
+                        Visibility="{Binding IsSubtaskFormOpen, Converter={StaticResource BoolToVisibility}}">
+                    <Border Width="400" VerticalAlignment="Center" HorizontalAlignment="Center" Padding="20"
+                            CornerRadius="12" Background="{DynamicResource FieldBackgroundBrush}"
+                            BorderBrush="{DynamicResource FieldBorderBrush}" BorderThickness="1">
+                        <StackPanel>
+                            <TextBlock Text="Nova etapa" FontWeight="SemiBold" FontSize="15" Margin="0,0,0,14"
+                                       Foreground="{DynamicResource TextPrimaryBrush}" />
+                            <TextBlock Text="O que precisa ser feito?" Foreground="{DynamicResource TextSecondaryBrush}" />
+                            <TextBox Style="{StaticResource WidgetTextBox}" Margin="0,6,0,16"
+                                     Text="{Binding SubtaskTitle, UpdateSourceTrigger=PropertyChanged}" />
+
+                            <TextBlock Foreground="{DynamicResource TextSecondaryBrush}">
+                                <Run Text="Duração estimada" />
+                                <Run Text="(opcional — 1h30, 90)" FontSize="11"
+                                     Foreground="{DynamicResource TextMutedBrush}" />
+                            </TextBlock>
+                            <TextBox Style="{StaticResource WidgetTextBox}" Width="120" HorizontalAlignment="Left"
+                                     Margin="0,6,0,12"
+                                     Text="{Binding SubtaskMinutes, UpdateSourceTrigger=PropertyChanged}" />
+
+                            <CheckBox Content="Pode ser dividida em sessões" Margin="0,0,0,12"
+                                      Foreground="{DynamicResource TextPrimaryBrush}"
+                                      IsChecked="{Binding SubtaskCanSplit}" />
+
+                            <TextBlock Foreground="{DynamicResource TextSecondaryBrush}">
+                                <Run Text="Dia" />
+                                <Run Text="(opcional — a distribuição preenche)" FontSize="11"
+                                     Foreground="{DynamicResource TextMutedBrush}" />
+                            </TextBlock>
+                            <DatePicker SelectedDate="{Binding SubtaskPlannedDate}" Width="150"
+                                        HorizontalAlignment="Left" Margin="0,6,0,0" />
+
+                            <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,18,0,0">
+                                <Button Style="{StaticResource GhostButton}" Content="Cancelar" Padding="12,6"
+                                        Command="{Binding CancelSubtaskFormCommand}" />
+                                <Button Style="{StaticResource GhostButton}" Content="Adicionar" Padding="12,6" Margin="8,0,0,0"
+                                        Foreground="{DynamicResource TextPrimaryBrush}"
+                                        Command="{Binding CommitSubtaskFormCommand}" />
+                            </StackPanel>
+                        </StackPanel>
+                    </Border>
+                </Border>
+
+                <!-- Pergunta de conclusão: a última etapa não conclui o todo sozinha -->
+                <Border Grid.ColumnSpan="2" Background="{DynamicResource OverlayBrush}"
+                        Visibility="{Binding IsCompletionAskVisible, Converter={StaticResource BoolToVisibility}}">
+                    <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center" MaxWidth="380">
+                        <TextBlock Text="Todas as etapas foram concluídas." HorizontalAlignment="Center"
+                                   Foreground="{DynamicResource TextSecondaryBrush}" />
+                        <TextBlock Text="{Binding CompletionQuestion}" HorizontalAlignment="Center" Margin="0,8,0,0"
+                                   FontWeight="SemiBold" TextWrapping="Wrap" TextAlignment="Center"
+                                   Foreground="{DynamicResource TextPrimaryBrush}" />
+                        <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" Margin="0,16,0,0">
+                            <Button Style="{StaticResource GhostButton}" Content="Sim, concluir" Padding="12,5"
+                                    Foreground="{DynamicResource TextPrimaryBrush}"
+                                    Command="{Binding ConfirmCompletionCommand}" />
+                            <Button Style="{StaticResource GhostButton}" Content="Ainda não" Padding="12,5" Margin="8,0,0,0"
+                                    Command="{Binding DismissCompletionCommand}" />
+                        </StackPanel>
+                    </StackPanel>
+                </Border>
+
+                <!-- Confirmação de exclusão -->
+                <Border Grid.ColumnSpan="2" Background="{DynamicResource OverlayBrush}"
+                        Visibility="{Binding IsDeleteAskVisible, Converter={StaticResource BoolToVisibility}}">
+                    <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center" MaxWidth="380">
+                        <TextBlock Text="{Binding DeleteQuestion}" HorizontalAlignment="Center" FontWeight="SemiBold"
+                                   TextWrapping="Wrap" TextAlignment="Center"
+                                   Foreground="{DynamicResource TextPrimaryBrush}" />
+                        <TextBlock Text="As etapas não são apagadas: elas voltam a ser tarefas soltas."
+                                   HorizontalAlignment="Center" Margin="0,6,0,0" TextWrapping="Wrap" TextAlignment="Center"
+                                   Foreground="{DynamicResource TextSecondaryBrush}" />
+                        <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" Margin="0,14,0,0">
+                            <Button Style="{StaticResource GhostButton}" Content="Excluir" Padding="12,5"
+                                    Foreground="{DynamicResource DangerBrush}"
+                                    Command="{Binding ConfirmDeleteCommand}" />
+                            <Button Style="{StaticResource GhostButton}" Content="Cancelar" Padding="12,5" Margin="8,0,0,0"
+                                    Command="{Binding CancelDeleteCommand}" />
+                        </StackPanel>
+                    </StackPanel>
+                </Border>
+
+                <!-- Aviso simples -->
+                <Border Grid.ColumnSpan="2" Background="{DynamicResource OverlayBrush}"
+                        Visibility="{Binding IsNoticeVisible, Converter={StaticResource BoolToVisibility}}">
+                    <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center" MaxWidth="380">
+                        <TextBlock Text="{Binding NoticeText}" HorizontalAlignment="Center" TextWrapping="Wrap"
+                                   TextAlignment="Center" Foreground="{DynamicResource TextPrimaryBrush}" />
+                        <Button Style="{StaticResource GhostButton}" Content="Entendi" Padding="12,5" Margin="0,14,0,0"
+                                HorizontalAlignment="Center" Command="{Binding DismissNoticeCommand}" />
+                    </StackPanel>
+                </Border>
+            </Grid>
+        </DataTemplate>
+    </Window.Resources>
+
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+        </Grid.RowDefinitions>
+
+        <!-- Cabeçalho -->
+        <Grid Grid.Row="0" Margin="20,16,20,10">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="Auto" />
+            </Grid.ColumnDefinitions>
+
+            <TextBlock Grid.Column="0"
+                       Text="DesktopTasks"
+                       VerticalAlignment="Center"
+                       FontSize="15"
+                       FontWeight="SemiBold"
+                       Foreground="{DynamicResource TextPrimaryBrush}" />
+
+            <Button Grid.Column="1"
+                    Style="{StaticResource GhostButton}"
+                    Content="+ Nova tarefa"
+                    Padding="12,6"
+                    Foreground="{DynamicResource TextPrimaryBrush}"
+                    Command="{Binding OpenNewTaskCommand}" />
+        </Grid>
+
+        <!-- Navegação e conteúdo -->
+        <Grid Grid.Row="1">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="180" />
+                <ColumnDefinition Width="*" />
+            </Grid.ColumnDefinitions>
+
+            <!-- A navegação cresceu com as versões, então ganhou grupos: o que é do
+                 dia, o que é de planejamento e as estruturas maiores. -->
+            <ScrollViewer Grid.Column="0" Style="{StaticResource WidgetScrollViewer}" Margin="0,0,4,12">
+                <StackPanel Margin="12,0,8,0">
+                    <TextBlock Text="DIA A DIA" Style="{StaticResource NavGroupLabel}" Margin="12,0,0,4" />
+                    <RadioButton Style="{StaticResource NavButton}" Content="Hoje"
+                                 IsChecked="{Binding SelectedSection, Converter={StaticResource EnumToBoolean}, ConverterParameter=Today, Mode=TwoWay}" />
+                    <RadioButton Style="{StaticResource NavButton}" Content="Esta semana"
+                                 IsChecked="{Binding SelectedSection, Converter={StaticResource EnumToBoolean}, ConverterParameter=Week, Mode=TwoWay}" />
+                    <RadioButton Style="{StaticResource NavButton}" Content="Algum dia"
+                                 IsChecked="{Binding SelectedSection, Converter={StaticResource EnumToBoolean}, ConverterParameter=Someday, Mode=TwoWay}" />
+
+                    <TextBlock Text="PLANEJAMENTO" Style="{StaticResource NavGroupLabel}" />
+                    <RadioButton Style="{StaticResource NavButton}" Content="Plano do dia"
+                                 IsChecked="{Binding SelectedSection, Converter={StaticResource EnumToBoolean}, ConverterParameter=DailyPlan, Mode=TwoWay}" />
+                    <RadioButton Style="{StaticResource NavButton}" Content="Calendário"
+                                 IsChecked="{Binding SelectedSection, Converter={StaticResource EnumToBoolean}, ConverterParameter=Calendar, Mode=TwoWay}" />
+                    <RadioButton Style="{StaticResource NavButton}" Content="Próximos prazos"
+                                 IsChecked="{Binding SelectedSection, Converter={StaticResource EnumToBoolean}, ConverterParameter=Deadlines, Mode=TwoWay}" />
+                    <RadioButton Style="{StaticResource NavButton}" Content="Capacidade"
+                                 IsChecked="{Binding SelectedSection, Converter={StaticResource EnumToBoolean}, ConverterParameter=Capacity, Mode=TwoWay}" />
+
+                    <TextBlock Text="ESTRUTURAS" Style="{StaticResource NavGroupLabel}" />
+                    <RadioButton Style="{StaticResource NavButton}" Content="Projetos"
+                                 IsChecked="{Binding SelectedSection, Converter={StaticResource EnumToBoolean}, ConverterParameter=Projects, Mode=TwoWay}" />
+                    <RadioButton Style="{StaticResource NavButton}" Content="Entregas"
+                                 IsChecked="{Binding SelectedSection, Converter={StaticResource EnumToBoolean}, ConverterParameter=Deliveries, Mode=TwoWay}" />
+                    <RadioButton Style="{StaticResource NavButton}" Content="Provas"
+                                 IsChecked="{Binding SelectedSection, Converter={StaticResource EnumToBoolean}, ConverterParameter=Exams, Mode=TwoWay}" />
+                    <RadioButton Style="{StaticResource NavButton}" Content="Rotinas"
+                                 IsChecked="{Binding SelectedSection, Converter={StaticResource EnumToBoolean}, ConverterParameter=Routines, Mode=TwoWay}" />
+                </StackPanel>
+            </ScrollViewer>
+
+            <Border Grid.Column="1"
+                    Margin="0,0,16,16"
+                    Padding="16,12"
+                    CornerRadius="10"
+                    Background="{DynamicResource FieldBackgroundBrush}"
+                    BorderBrush="{DynamicResource SurfaceBorderBrush}"
+                    BorderThickness="1">
+                <Grid>
+                    <!-- Seção Hoje -->
+                    <Grid Visibility="{Binding IsTodayVisible, Converter={StaticResource BoolToVisibility}}">
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="*" />
+                        </Grid.RowDefinitions>
+                        <TextBlock Grid.Row="0" Text="Hoje" FontWeight="SemiBold" Margin="0,0,0,10"
+                                   Foreground="{DynamicResource TextPrimaryBrush}" />
+                        <TextBlock Grid.Row="1" Text="{Binding TodayEmptyText}" VerticalAlignment="Top"
+                                   Foreground="{DynamicResource TextSecondaryBrush}"
+                                   Visibility="{Binding IsTodayEmpty, Converter={StaticResource BoolToVisibility}}" />
+                        <ScrollViewer Grid.Row="1" Style="{StaticResource WidgetScrollViewer}">
+                            <ItemsControl ItemsSource="{Binding TodayItems}" ItemTemplate="{StaticResource TaskRowTemplate}" />
+                        </ScrollViewer>
+                    </Grid>
+
+                    <!-- Seção Esta semana -->
+                    <Grid Visibility="{Binding IsWeekVisible, Converter={StaticResource BoolToVisibility}}">
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="*" />
+                        </Grid.RowDefinitions>
+
+                        <Grid Grid.Row="0" Margin="0,0,0,10">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Grid.Column="0" Text="Esta semana" FontWeight="SemiBold" VerticalAlignment="Center"
+                                       Foreground="{DynamicResource TextPrimaryBrush}" />
+                            <TextBlock Grid.Column="1" Text="{Binding WeekLabel}" Margin="12,0,0,0" VerticalAlignment="Center"
+                                       Foreground="{DynamicResource TextSecondaryBrush}" />
+                            <StackPanel Grid.Column="2" Orientation="Horizontal">
+                                <Button Style="{StaticResource GhostButton}" Content="&#x2039;" Padding="10,2" Command="{Binding PreviousWeekCommand}" />
+                                <Button Style="{StaticResource GhostButton}" Content="Hoje" Padding="8,2" Command="{Binding CurrentWeekCommand}" />
+                                <Button Style="{StaticResource GhostButton}" Content="&#x203A;" Padding="10,2" Command="{Binding NextWeekCommand}" />
+                            </StackPanel>
+                        </Grid>
+
+                        <!-- Dias em linhas, não em colunas: o texto da tarefa cabe inteiro
+                             e cada dia vira um alvo de arraste largo. -->
+                        <ScrollViewer Grid.Row="1" Style="{StaticResource WidgetScrollViewer}">
+                            <ItemsControl ItemsSource="{Binding WeekDays}">
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate DataType="{x:Type vm:DayColumnViewModel}">
+                                        <Border x:Name="DayRoot"
+                                                Margin="0,0,0,6"
+                                                Padding="10,8"
+                                                MinHeight="52"
+                                                CornerRadius="8"
+                                                BorderThickness="1"
+                                                BorderBrush="{DynamicResource SurfaceBorderBrush}"
+                                                Background="Transparent"
+                                                AllowDrop="True"
+                                                Drop="DayColumn_Drop"
+                                                DragOver="DayColumn_DragOver"
+                                                DragLeave="DayColumn_DragLeave">
+                                            <Grid>
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="96" />
+                                                    <ColumnDefinition Width="*" />
+                                                </Grid.ColumnDefinitions>
+
+                                                <StackPanel Grid.Column="0" Margin="2,2,10,0">
+                                                    <TextBlock x:Name="DayName" Text="{Binding DayName}" FontSize="11"
+                                                               Foreground="{DynamicResource TextSecondaryBrush}" />
+                                                    <TextBlock x:Name="DayNumber" Text="{Binding DayNumber}" FontSize="14" FontWeight="SemiBold"
+                                                               Foreground="{DynamicResource TextPrimaryBrush}" />
+                                                </StackPanel>
+
+                                                <Grid Grid.Column="1">
+                                                    <TextBlock Text="Arraste uma tarefa para cá." FontSize="11" VerticalAlignment="Center"
+                                                               Foreground="{DynamicResource TextMutedBrush}"
+                                                               Visibility="{Binding IsEmpty, Converter={StaticResource BoolToVisibility}}" />
+                                                    <ItemsControl ItemsSource="{Binding Items}" ItemTemplate="{StaticResource TaskRowTemplate}" />
+                                                </Grid>
+                                            </Grid>
+                                        </Border>
+                                        <DataTemplate.Triggers>
+                                            <DataTrigger Binding="{Binding IsToday}" Value="True">
+                                                <Setter TargetName="DayRoot" Property="BorderBrush" Value="{DynamicResource DropIndicatorBrush}" />
+                                                <Setter TargetName="DayName" Property="Foreground" Value="{DynamicResource DropIndicatorBrush}" />
+                                            </DataTrigger>
+                                        </DataTemplate.Triggers>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                        </ScrollViewer>
+                    </Grid>
+
+                    <!-- Seção Calendário -->
+                    <Grid Visibility="{Binding IsCalendarVisible, Converter={StaticResource BoolToVisibility}}">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="230" />
+                        </Grid.ColumnDefinitions>
+
+                        <Grid Grid.Column="0">
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="*" />
+                            </Grid.RowDefinitions>
+
+                            <Grid Grid.Row="0" Margin="0,0,0,10">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Grid.Column="0" Text="{Binding CalendarLabel}" FontWeight="SemiBold" VerticalAlignment="Center"
+                                           Foreground="{DynamicResource TextPrimaryBrush}" />
+                                <StackPanel Grid.Column="1" Orientation="Horizontal">
+                                    <Button Style="{StaticResource GhostButton}" Content="&#x2039;" Padding="10,2" Command="{Binding PreviousMonthCommand}" />
+                                    <Button Style="{StaticResource GhostButton}" Content="Hoje" Padding="8,2" Command="{Binding CurrentMonthCommand}" />
+                                    <Button Style="{StaticResource GhostButton}" Content="&#x203A;" Padding="10,2" Command="{Binding NextMonthCommand}" />
+                                </StackPanel>
+                            </Grid>
+
+                            <UniformGrid Grid.Row="1" Columns="7" Margin="0,0,0,4">
+                                <TextBlock Text="seg" FontSize="11" HorizontalAlignment="Center" Foreground="{DynamicResource TextMutedBrush}" />
+                                <TextBlock Text="ter" FontSize="11" HorizontalAlignment="Center" Foreground="{DynamicResource TextMutedBrush}" />
+                                <TextBlock Text="qua" FontSize="11" HorizontalAlignment="Center" Foreground="{DynamicResource TextMutedBrush}" />
+                                <TextBlock Text="qui" FontSize="11" HorizontalAlignment="Center" Foreground="{DynamicResource TextMutedBrush}" />
+                                <TextBlock Text="sex" FontSize="11" HorizontalAlignment="Center" Foreground="{DynamicResource TextMutedBrush}" />
+                                <TextBlock Text="sáb" FontSize="11" HorizontalAlignment="Center" Foreground="{DynamicResource TextMutedBrush}" />
+                                <TextBlock Text="dom" FontSize="11" HorizontalAlignment="Center" Foreground="{DynamicResource TextMutedBrush}" />
+                            </UniformGrid>
+
+                            <ItemsControl Grid.Row="2" ItemsSource="{Binding CalendarDays}">
+                                <ItemsControl.ItemsPanel>
+                                    <ItemsPanelTemplate>
+                                        <UniformGrid Columns="7" />
+                                    </ItemsPanelTemplate>
+                                </ItemsControl.ItemsPanel>
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate DataType="{x:Type vm:CalendarDayViewModel}">
+                                        <Border x:Name="CellRoot"
+                                                Margin="2"
+                                                MinHeight="52"
+                                                Padding="6,4"
+                                                CornerRadius="6"
+                                                Background="Transparent"
+                                                BorderThickness="1"
+                                                BorderBrush="Transparent"
+                                                Cursor="Hand"
+                                                MouseLeftButtonUp="CalendarDay_Click">
+                                            <StackPanel>
+                                                <TextBlock x:Name="DayNumber" Text="{Binding DayNumber}" FontSize="12"
+                                                           Foreground="{DynamicResource TextPrimaryBrush}" />
+                                                <StackPanel Orientation="Horizontal" Margin="0,4,0,0">
+                                                    <TextBlock Text="&#x2022;" FontSize="15" Margin="0,0,4,0"
+                                                               ToolTip="Planejado"
+                                                               Foreground="{DynamicResource DropIndicatorBrush}"
+                                                               Visibility="{Binding HasPlanned, Converter={StaticResource BoolToVisibility}}" />
+                                                    <TextBlock Text="!" FontSize="12" FontWeight="Bold"
+                                                               ToolTip="Prazo"
+                                                               Foreground="{DynamicResource DangerBrush}"
+                                                               Visibility="{Binding HasDue, Converter={StaticResource BoolToVisibility}}" />
+                                                    <!-- Prova não é tarefa nem prazo: marcador próprio. -->
+                                                    <TextBlock Text="&#x25C6;" FontSize="11" Margin="4,0,0,0"
+                                                               ToolTip="Prova"
+                                                               Foreground="{DynamicResource WarningBrush}"
+                                                               Visibility="{Binding HasExam, Converter={StaticResource BoolToVisibility}}" />
+                                                </StackPanel>
+                                            </StackPanel>
+                                        </Border>
+                                        <DataTemplate.Triggers>
+                                            <DataTrigger Binding="{Binding IsCurrentMonth}" Value="False">
+                                                <Setter TargetName="DayNumber" Property="Foreground" Value="{DynamicResource TextMutedBrush}" />
+                                                <Setter TargetName="CellRoot" Property="Opacity" Value="0.55" />
+                                            </DataTrigger>
+                                            <DataTrigger Binding="{Binding IsToday}" Value="True">
+                                                <Setter TargetName="DayNumber" Property="FontWeight" Value="Bold" />
+                                                <Setter TargetName="CellRoot" Property="BorderBrush" Value="{DynamicResource DropIndicatorBrush}" />
+                                            </DataTrigger>
+                                            <DataTrigger Binding="{Binding IsSelected}" Value="True">
+                                                <Setter TargetName="CellRoot" Property="Background" Value="{DynamicResource PressedBrush}" />
+                                            </DataTrigger>
+                                            <Trigger SourceName="CellRoot" Property="IsMouseOver" Value="True">
+                                                <Setter TargetName="CellRoot" Property="Background" Value="{DynamicResource HoverBrush}" />
+                                            </Trigger>
+                                        </DataTemplate.Triggers>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                        </Grid>
+
+                        <Border Grid.Column="1" Margin="12,0,0,0" Padding="10" CornerRadius="8"
+                                BorderThickness="1" BorderBrush="{DynamicResource SurfaceBorderBrush}">
+                            <ScrollViewer Style="{StaticResource WidgetScrollViewer}">
+                                <StackPanel>
+                                    <TextBlock Text="{Binding SelectedDay.Title}" FontWeight="SemiBold" Margin="0,0,0,8"
+                                               Foreground="{DynamicResource TextPrimaryBrush}" />
+                                    <TextBlock Text="Nada neste dia." FontSize="12"
+                                               Foreground="{DynamicResource TextMutedBrush}"
+                                               Visibility="{Binding SelectedDay.IsEmpty, Converter={StaticResource BoolToVisibility}}" />
+
+                                    <ItemsControl ItemsSource="{Binding SelectedDay.Exams}" Margin="0,0,0,6">
+                                        <ItemsControl.ItemTemplate>
+                                            <DataTemplate DataType="{x:Type vm:ExamReminderViewModel}">
+                                                <Border CornerRadius="6" Padding="8,6" Margin="0,2"
+                                                        BorderThickness="1"
+                                                        BorderBrush="{DynamicResource WarningBrush}">
+                                                    <StackPanel Orientation="Horizontal">
+                                                        <TextBlock Text="&#x25C6;" Margin="0,0,6,0"
+                                                                   Foreground="{DynamicResource WarningBrush}" />
+                                                        <StackPanel>
+                                                            <TextBlock Text="{Binding Title}" TextWrapping="Wrap"
+                                                                       Foreground="{DynamicResource TextPrimaryBrush}" />
+                                                            <TextBlock Text="Prova neste dia" FontSize="11"
+                                                                       Foreground="{DynamicResource TextMutedBrush}" />
+                                                        </StackPanel>
+                                                    </StackPanel>
+                                                </Border>
+                                            </DataTemplate>
+                                        </ItemsControl.ItemTemplate>
+                                    </ItemsControl>
+
+                                    <ItemsControl ItemsSource="{Binding SelectedDay.Planned}" ItemTemplate="{StaticResource TaskRowTemplate}" />
+                                    <ItemsControl ItemsSource="{Binding SelectedDay.Due}" Margin="0,6,0,0">
+                                        <ItemsControl.ItemTemplate>
+                                            <DataTemplate DataType="{x:Type vm:DeadlineViewModel}">
+                                                <StackPanel Orientation="Horizontal" Margin="8,3">
+                                                    <TextBlock Text="!" FontWeight="Bold" Margin="0,0,6,0"
+                                                               Foreground="{DynamicResource DangerBrush}" />
+                                                    <TextBlock Text="{Binding Title}" TextWrapping="Wrap"
+                                                               Foreground="{DynamicResource TextSecondaryBrush}" />
+                                                </StackPanel>
+                                            </DataTemplate>
+                                        </ItemsControl.ItemTemplate>
+                                    </ItemsControl>
+                                </StackPanel>
+                            </ScrollViewer>
+                        </Border>
+                    </Grid>
+
+                    <!-- Seção Próximos prazos -->
+                    <Grid Visibility="{Binding IsDeadlinesVisible, Converter={StaticResource BoolToVisibility}}">
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="*" />
+                        </Grid.RowDefinitions>
+                        <TextBlock Grid.Row="0" Text="PRÓXIMOS PRAZOS" FontWeight="SemiBold" FontSize="12" Margin="0,0,0,12"
+                                   Foreground="{DynamicResource TextPrimaryBrush}" />
+                        <TextBlock Grid.Row="1" Text="Nenhum prazo nem prova à vista." VerticalAlignment="Top"
+                                   Foreground="{DynamicResource TextSecondaryBrush}"
+                                   Visibility="{Binding IsDeadlinesEmpty, Converter={StaticResource BoolToVisibility}}" />
+                        <ScrollViewer Grid.Row="1" Style="{StaticResource WidgetScrollViewer}">
+                          <StackPanel>
+                            <!-- Provas primeiro, como lembrete. Elas não são tarefa:
+                                 não têm caixa para marcar e não se concluem. -->
+                            <StackPanel Visibility="{Binding HasUpcomingExams, Converter={StaticResource BoolToVisibility}}"
+                                        Margin="0,0,0,14">
+                                <TextBlock Text="PROVAS" FontSize="10" FontWeight="SemiBold" Margin="0,0,0,6"
+                                           Foreground="{DynamicResource TextMutedBrush}" />
+                                <ItemsControl ItemsSource="{Binding UpcomingExams}">
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate DataType="{x:Type vm:ExamReminderViewModel}">
+                                            <Grid Margin="0,4">
+                                                <Grid.ColumnDefinitions>
+                                                    <!-- "prova em 12 dias" é mais longo que "12 dias" -->
+                                                    <ColumnDefinition Width="130" />
+                                                    <ColumnDefinition Width="*" />
+                                                    <ColumnDefinition Width="Auto" />
+                                                </Grid.ColumnDefinitions>
+                                                <TextBlock Grid.Column="0" Text="{Binding Proximity}" Margin="0,0,8,0"
+                                                           Foreground="{DynamicResource WarningBrush}" />
+                                                <StackPanel Grid.Column="1" Orientation="Horizontal">
+                                                    <TextBlock Text="&#x25C6;" Margin="0,0,6,0" FontSize="11"
+                                                               VerticalAlignment="Center"
+                                                               Foreground="{DynamicResource WarningBrush}" />
+                                                    <TextBlock Text="{Binding Title}" TextWrapping="Wrap"
+                                                               Foreground="{DynamicResource TextPrimaryBrush}" />
+                                                </StackPanel>
+                                                <TextBlock Grid.Column="2" Text="{Binding DateText}" Margin="12,0,0,0"
+                                                           FontSize="11"
+                                                           Foreground="{DynamicResource TextMutedBrush}" />
+                                            </Grid>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+                            </StackPanel>
+
+                            <ItemsControl ItemsSource="{Binding UpcomingDeadlines}">
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate DataType="{x:Type vm:DeadlineViewModel}">
+                                        <Grid Margin="0,4">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="90" />
+                                                <ColumnDefinition Width="*" />
+                                                <ColumnDefinition Width="Auto" />
+                                            </Grid.ColumnDefinitions>
+                                            <TextBlock x:Name="Proximity" Grid.Column="0" Text="{Binding Proximity}"
+                                                       Foreground="{DynamicResource TextSecondaryBrush}" />
+                                            <TextBlock Grid.Column="1" Text="{Binding Title}" TextWrapping="Wrap"
+                                                       Foreground="{DynamicResource TextPrimaryBrush}" />
+                                            <TextBlock Grid.Column="2" Text="{Binding DateText}" Margin="12,0,0,0" FontSize="11"
+                                                       Foreground="{DynamicResource TextMutedBrush}" />
+                                        </Grid>
+                                        <DataTemplate.Triggers>
+                                            <DataTrigger Binding="{Binding IsOverdue}" Value="True">
+                                                <Setter TargetName="Proximity" Property="Foreground" Value="{DynamicResource DangerBrush}" />
+                                            </DataTrigger>
+                                        </DataTemplate.Triggers>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                          </StackPanel>
+                        </ScrollViewer>
+                    </Grid>
+
+                    <!-- Seção Rotinas -->
+                    <Grid Visibility="{Binding IsRoutinesVisible, Converter={StaticResource BoolToVisibility}}">
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="*" />
+                        </Grid.RowDefinitions>
+
+                        <Grid Grid.Row="0" Margin="0,0,0,10">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Grid.Column="0" Text="Rotinas" FontWeight="SemiBold" VerticalAlignment="Center"
+                                       Foreground="{DynamicResource TextPrimaryBrush}" />
+                            <Button Grid.Column="1" Style="{StaticResource GhostButton}" Content="+ Nova rotina" Padding="10,4"
+                                    Foreground="{DynamicResource TextPrimaryBrush}"
+                                    Command="{Binding OpenNewRoutineCommand}" />
+                        </Grid>
+
+                        <TextBlock Grid.Row="1" VerticalAlignment="Top"
+                                   Text="Nenhuma rotina ainda. Uma rotina é algo que se repete — ela não termina quando você conclui o dia."
+                                   TextWrapping="Wrap"
+                                   Foreground="{DynamicResource TextSecondaryBrush}"
+                                   Visibility="{Binding IsRoutinesEmpty, Converter={StaticResource BoolToVisibility}}" />
+
+                        <ScrollViewer Grid.Row="1" Style="{StaticResource WidgetScrollViewer}">
+                            <ItemsControl ItemsSource="{Binding Routines}">
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate DataType="{x:Type vm:RoutineListItemViewModel}">
+                                        <Border x:Name="RoutineRoot" Background="Transparent" CornerRadius="6" Padding="10,8" Margin="0,2">
+                                            <Grid>
+                                                <Grid.RowDefinitions>
+                                                    <RowDefinition Height="Auto" />
+                                                    <RowDefinition Height="Auto" />
+                                                </Grid.RowDefinitions>
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="Auto" />
+                                                    <ColumnDefinition Width="*" />
+                                                    <ColumnDefinition Width="Auto" />
+                                                </Grid.ColumnDefinitions>
+
+                                                <TextBlock Grid.Row="0" Grid.Column="0" Text="&#x21BB;" FontSize="14" Margin="0,0,8,0"
+                                                           Foreground="{DynamicResource DropIndicatorBrush}" />
+                                                <StackPanel Grid.Row="0" Grid.Column="1">
+                                                    <TextBlock Text="{Binding Title}" TextWrapping="Wrap"
+                                                               Foreground="{DynamicResource TextPrimaryBrush}" />
+                                                    <TextBlock Text="{Binding Description}" FontSize="11" Margin="0,1,0,0"
+                                                               Foreground="{DynamicResource TextMutedBrush}" />
+                                                </StackPanel>
+                                                <Button x:Name="RoutineMenuButton" Grid.Row="0" Grid.Column="2"
+                                                        Style="{StaticResource RowMenuButton}" Content="&#x22EF;" Opacity="0"
+                                                        Click="RoutineMenuButton_Click" />
+
+                                                <StackPanel Grid.Row="1" Grid.Column="1" Grid.ColumnSpan="2"
+                                                            Orientation="Horizontal" Margin="0,4,0,0"
+                                                            Visibility="{Binding IsMenuOpen, Converter={StaticResource BoolToVisibility}}">
+                                                    <Button Style="{StaticResource GhostButton}" Content="Editar" Padding="6,2"
+                                                            Click="EditRoutine_Click" />
+                                                    <Button Style="{StaticResource GhostButton}" Content="Excluir" Padding="6,2" Margin="4,0,0,0"
+                                                            Foreground="{DynamicResource DangerBrush}" Click="DeleteRoutine_Click" />
+                                                </StackPanel>
+                                            </Grid>
+                                        </Border>
+                                        <DataTemplate.Triggers>
+                                            <Trigger SourceName="RoutineRoot" Property="IsMouseOver" Value="True">
+                                                <Setter TargetName="RoutineMenuButton" Property="Opacity" Value="1" />
+                                                <Setter TargetName="RoutineRoot" Property="Background" Value="{DynamicResource HoverBrush}" />
+                                            </Trigger>
+                                            <DataTrigger Binding="{Binding IsMenuOpen}" Value="True">
+                                                <Setter TargetName="RoutineMenuButton" Property="Opacity" Value="1" />
+                                            </DataTrigger>
+                                        </DataTemplate.Triggers>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                        </ScrollViewer>
+                    </Grid>
+
+
+                    <!-- Seção Plano do dia (V0.7) -->
+                    <Grid DataContext="{Binding DailyPlan}"
+                          Visibility="{Binding DataContext.IsDailyPlanVisible, RelativeSource={RelativeSource AncestorType=Window}, Converter={StaticResource BoolToVisibility}}">
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="*" />
+                            <RowDefinition Height="Auto" />
+                        </Grid.RowDefinitions>
+
+                        <Grid Grid.Row="0" Margin="0,0,0,4">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Grid.Column="0" Text="HOJE — PLANO SUGERIDO" FontWeight="SemiBold" FontSize="12"
+                                       VerticalAlignment="Center" Foreground="{DynamicResource TextPrimaryBrush}" />
+                            <Button Grid.Column="1" Style="{StaticResource GhostButton}" Content="Redistribuir"
+                                    Padding="10,4" Command="{Binding RedistributeCommand}" />
+                        </Grid>
+
+                        <StackPanel Grid.Row="1" Margin="0,4,0,10">
+                            <TextBlock Text="{Binding LoadText}" Foreground="{DynamicResource TextSecondaryBrush}" />
+                            <TextBlock Text="{Binding CapacityText}" FontSize="11" Margin="0,2,0,0"
+                                       Foreground="{DynamicResource TextMutedBrush}" />
+                        </StackPanel>
+
+                        <!-- Sobrecarga e replanejamento: avisam, nunca agem sozinhos -->
+                        <StackPanel Grid.Row="2">
+                            <Border Padding="10,8" CornerRadius="8" Margin="0,0,0,8"
+                                    BorderThickness="1" BorderBrush="{DynamicResource WarningBrush}"
+                                    Visibility="{Binding IsOverloaded, Converter={StaticResource BoolToVisibility}}">
+                                <StackPanel>
+                                    <TextBlock Text="Dia sobrecarregado" FontWeight="SemiBold"
+                                               Foreground="{DynamicResource WarningBrush}" />
+                                    <TextBlock Text="{Binding OverloadText}" FontSize="11" Margin="0,2,0,0"
+                                               TextWrapping="Wrap" Foreground="{DynamicResource TextSecondaryBrush}" />
+                                </StackPanel>
+                            </Border>
+
+                            <!-- Pendência não expira: o que ficou para trás já veio para hoje.
+                                 O aviso existe para a lista não mudar sem explicação. -->
+                            <TextBlock Text="{Binding CarriedForwardText}" TextWrapping="Wrap" Margin="0,0,0,8"
+                                       Foreground="{DynamicResource TextSecondaryBrush}"
+                                       Visibility="{Binding HasCarriedForward, Converter={StaticResource BoolToVisibility}}" />
+
+                            <ItemsControl ItemsSource="{Binding Conflicts}" Margin="0,0,0,8"
+                                          Visibility="{Binding HasConflicts, Converter={StaticResource BoolToVisibility}}">
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate>
+                                        <TextBlock Text="{Binding}" TextWrapping="Wrap" FontSize="11" Margin="0,1"
+                                                   Foreground="{DynamicResource DangerBrush}" />
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                        </StackPanel>
+
+                        <!-- Tudo concluído: nunca puxa trabalho de amanhã sozinho -->
+                        <StackPanel Grid.Row="3" VerticalAlignment="Top"
+                                    Visibility="{Binding IsAllDone, Converter={StaticResource BoolToVisibility}}">
+                            <TextBlock Text="&#x2713; Tudo concluído por hoje." FontWeight="SemiBold"
+                                       Foreground="{DynamicResource TextPrimaryBrush}" />
+                            <Button Style="{StaticResource GhostButton}" Content="Ver amanhã" Padding="0,6"
+                                    HorizontalAlignment="Left" Command="{Binding ShowTomorrowCommand}" />
+                            <StackPanel Visibility="{Binding IsTomorrowVisible, Converter={StaticResource BoolToVisibility}}">
+                                <TextBlock Text="{Binding TomorrowText}" Margin="0,4,0,0"
+                                           Foreground="{DynamicResource TextSecondaryBrush}" />
+                                <ItemsControl ItemsSource="{Binding Tomorrow}" ItemTemplate="{StaticResource PlanItemTemplate}" />
+                            </StackPanel>
+                        </StackPanel>
+
+                        <ScrollViewer Grid.Row="3" Style="{StaticResource WidgetScrollViewer}"
+                                      Visibility="{Binding IsAllDone, Converter={StaticResource InverseBoolToVisibility}}">
+                            <ItemsControl ItemsSource="{Binding Items}" ItemTemplate="{StaticResource PlanItemTemplate}" />
+                        </ScrollViewer>
+
+                        <!-- Carga dos próximos dias -->
+                        <Border Grid.Row="4" Margin="0,10,0,0" Padding="10,8" CornerRadius="8"
+                                BorderThickness="1" BorderBrush="{DynamicResource SurfaceBorderBrush}">
+                            <StackPanel>
+                                <TextBlock Text="PRÓXIMOS DIAS" FontSize="10" FontWeight="SemiBold" Margin="0,0,0,6"
+                                           Foreground="{DynamicResource TextMutedBrush}" />
+                                <ItemsControl ItemsSource="{Binding Days}">
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate DataType="{x:Type vm:DayLoadViewModel}">
+                                            <Grid Margin="0,2">
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="70" />
+                                                    <ColumnDefinition Width="190" />
+                                                    <ColumnDefinition Width="*" />
+                                                </Grid.ColumnDefinitions>
+                                                <TextBlock Grid.Column="0" Text="{Binding DayText}" FontSize="11"
+                                                           Foreground="{DynamicResource TextSecondaryBrush}" />
+                                                <Grid Grid.Column="1" HorizontalAlignment="Left" VerticalAlignment="Center">
+                                                    <Border Width="180" Height="5" CornerRadius="3" HorizontalAlignment="Left"
+                                                            Background="{DynamicResource ProgressTrackBrush}" />
+                                                    <Border x:Name="Fill" Width="{Binding BarWidth}" Height="5" CornerRadius="3"
+                                                            HorizontalAlignment="Left"
+                                                            Background="{DynamicResource ProgressFillBrush}" />
+                                                </Grid>
+                                                <TextBlock Grid.Column="2" Text="{Binding LoadText}" FontSize="11" Margin="10,0,0,0"
+                                                           Foreground="{DynamicResource TextMutedBrush}" />
+                                            </Grid>
+                                            <DataTemplate.Triggers>
+                                                <DataTrigger Binding="{Binding IsOverloaded}" Value="True">
+                                                    <Setter TargetName="Fill" Property="Background"
+                                                            Value="{DynamicResource WarningBrush}" />
+                                                </DataTrigger>
+                                            </DataTemplate.Triggers>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+                            </StackPanel>
+                        </Border>
+                    </Grid>
+
+                    <!-- Seção Capacidade (V0.7) -->
+                    <Grid DataContext="{Binding Capacity}"
+                          Visibility="{Binding DataContext.IsCapacityVisible, RelativeSource={RelativeSource AncestorType=Window}, Converter={StaticResource BoolToVisibility}}">
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="*" />
+                        </Grid.RowDefinitions>
+
+                        <TextBlock Grid.Row="0" Text="Capacidade" Style="{StaticResource SectionTitle}" Margin="0,0,0,10" />
+
+                        <ScrollViewer Grid.Row="1" Style="{StaticResource WidgetScrollViewer}">
+                            <StackPanel>
+                                <TextBlock TextWrapping="Wrap" Margin="0,0,0,12"
+                                           Foreground="{DynamicResource TextSecondaryBrush}"
+                                           Text="Quanto tempo cada dia costuma ter. Zero significa que o dia não recebe planejamento automático — você continua podendo colocar algo lá à mão." />
+
+                                <ItemsControl ItemsSource="{Binding Week}">
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate DataType="{x:Type vm:WeeklyCapacityViewModel}">
+                                            <Grid Margin="0,3" HorizontalAlignment="Left">
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="60" />
+                                                    <ColumnDefinition Width="110" />
+                                                    <ColumnDefinition Width="Auto" />
+                                                </Grid.ColumnDefinitions>
+                                                <TextBlock Grid.Column="0" Text="{Binding Name}" VerticalAlignment="Center"
+                                                           Foreground="{DynamicResource TextPrimaryBrush}" />
+                                                <TextBox Grid.Column="1" Style="{StaticResource WidgetTextBox}"
+                                                         Text="{Binding Minutes, UpdateSourceTrigger=PropertyChanged}" />
+                                                <TextBlock Grid.Column="2" Text="{Binding Summary}" Margin="10,0,0,0"
+                                                           VerticalAlignment="Center" FontSize="11"
+                                                           Foreground="{DynamicResource TextMutedBrush}" />
+                                            </Grid>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+
+                                <Button Style="{StaticResource GhostButton}" Content="Salvar semana" Padding="12,5"
+                                        HorizontalAlignment="Left" Margin="0,12,0,0"
+                                        Foreground="{DynamicResource TextPrimaryBrush}"
+                                        Command="{Binding SaveWeeklyCommand}" />
+
+                                <TextBlock Text="EXCEÇÕES POR DATA" FontSize="10" FontWeight="SemiBold" Margin="0,24,0,6"
+                                           Foreground="{DynamicResource TextMutedBrush}" />
+                                <TextBlock Text="Uma exceção vale só para aquela data." Margin="0,0,0,8"
+                                           Foreground="{DynamicResource TextSecondaryBrush}" />
+
+                                <StackPanel Orientation="Horizontal">
+                                    <DatePicker SelectedDate="{Binding OverrideDate}" Width="140" />
+                                    <TextBox Style="{StaticResource WidgetTextBox}" Width="90" Margin="8,0,0,0"
+                                             Text="{Binding OverrideMinutes, UpdateSourceTrigger=PropertyChanged}" />
+                                    <Button Style="{StaticResource GhostButton}" Content="Adicionar" Padding="10,4"
+                                            Margin="8,0,0,0" Command="{Binding AddOverrideCommand}" />
+                                </StackPanel>
+
+                                <TextBlock Text="Nenhuma exceção cadastrada." Margin="0,12,0,0"
+                                           Foreground="{DynamicResource TextMutedBrush}"
+                                           Visibility="{Binding IsOverridesEmpty, Converter={StaticResource BoolToVisibility}}" />
+
+                                <ItemsControl ItemsSource="{Binding Overrides}" Margin="0,8,0,0">
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate DataType="{x:Type vm:CapacityOverrideViewModel}">
+                                            <StackPanel Orientation="Horizontal" Margin="0,2">
+                                                <TextBlock Text="{Binding DateText}" Width="60" VerticalAlignment="Center"
+                                                           Foreground="{DynamicResource TextPrimaryBrush}" />
+                                                <TextBlock Text="{Binding Summary}" VerticalAlignment="Center"
+                                                           Foreground="{DynamicResource TextSecondaryBrush}" />
+                                                <Button Style="{StaticResource GhostButton}" Content="Remover" Padding="8,2"
+                                                        Margin="12,0,0,0" Click="RemoveOverride_Click" />
+                                            </StackPanel>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+                            </StackPanel>
+                        </ScrollViewer>
+                    </Grid>
+
+                    <!-- Seção Projetos (V0.5) -->
+                    <ContentControl Content="{Binding Projects}"
+                                    ContentTemplate="{StaticResource ContainerSectionTemplate}"
+                                    Visibility="{Binding IsProjectsVisible, Converter={StaticResource BoolToVisibility}}" />
+
+                    <!-- Seção Entregas (V0.5) -->
+                    <ContentControl Content="{Binding Deliveries}"
+                                    ContentTemplate="{StaticResource ContainerSectionTemplate}"
+                                    Visibility="{Binding IsDeliveriesVisible, Converter={StaticResource BoolToVisibility}}" />
+
+                    <!-- Seção Provas (V0.6, refeita na V0.7.1: árvore + grafo) -->
+                    <Grid DataContext="{Binding Exams}"
+                          Visibility="{Binding DataContext.IsExamsVisible, RelativeSource={RelativeSource AncestorType=Window}, Converter={StaticResource BoolToVisibility}}">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="250" />
+                            <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
+
+                        <!-- Lista de provas -->
+                        <Grid Grid.Column="0" Margin="0,0,14,0">
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="*" />
+                            </Grid.RowDefinitions>
+
+                            <Grid Grid.Row="0" Margin="0,0,0,10">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Grid.Column="0" Text="Provas" Style="{StaticResource SectionTitle}" />
+                                <Button Grid.Column="1" Style="{StaticResource GhostButton}" Content="+ Nova prova"
+                                        Padding="10,4" Foreground="{DynamicResource TextPrimaryBrush}"
+                                        Command="{Binding OpenNewCommand}" />
+                            </Grid>
+
+                            <TextBlock Grid.Row="1" VerticalAlignment="Top" TextWrapping="Wrap"
+                                       Text="Nenhuma prova ainda. Uma prova tem disciplina, data, limites de estudo e uma árvore do que cai nela."
+                                       Foreground="{DynamicResource TextSecondaryBrush}"
+                                       Visibility="{Binding IsEmpty, Converter={StaticResource BoolToVisibility}}" />
+
+                            <ScrollViewer Grid.Row="1" Style="{StaticResource WidgetScrollViewer}">
+                                <ItemsControl ItemsSource="{Binding Items}">
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate DataType="{x:Type vm:ExamListItemViewModel}">
+                                            <Border x:Name="Root" CornerRadius="8" Padding="10,8" Margin="0,2"
+                                                    Background="Transparent" BorderThickness="1" BorderBrush="Transparent"
+                                                    MouseLeftButtonUp="ExamItem_Click">
+                                                <StackPanel>
+                                                    <TextBlock Text="{Binding Title}" TextWrapping="Wrap"
+                                                               Foreground="{DynamicResource TextPrimaryBrush}" />
+                                                    <StackPanel Orientation="Horizontal" Margin="0,2,0,0">
+                                                        <TextBlock Text="{Binding DateText}" FontSize="11"
+                                                                   Foreground="{DynamicResource TextSecondaryBrush}" />
+                                                        <TextBlock Text=" · " FontSize="11"
+                                                                   Foreground="{DynamicResource TextMutedBrush}" />
+                                                        <TextBlock Text="{Binding Proximity}" FontSize="11"
+                                                                   Foreground="{DynamicResource TextMutedBrush}" />
+                                                    </StackPanel>
+                                                    <TextBlock Text="{Binding Summary}" FontSize="11" Margin="0,4,0,0"
+                                                               TextWrapping="Wrap"
+                                                               Foreground="{DynamicResource TextMutedBrush}" />
+                                                </StackPanel>
+                                            </Border>
+                                            <DataTemplate.Triggers>
+                                                <Trigger SourceName="Root" Property="IsMouseOver" Value="True">
+                                                    <Setter TargetName="Root" Property="Background"
+                                                            Value="{DynamicResource HoverBrush}" />
+                                                </Trigger>
+                                                <DataTrigger Binding="{Binding IsSelected}" Value="True">
+                                                    <Setter TargetName="Root" Property="Background"
+                                                            Value="{DynamicResource PressedBrush}" />
+                                                    <Setter TargetName="Root" Property="BorderBrush"
+                                                            Value="{DynamicResource DropIndicatorBrush}" />
+                                                </DataTrigger>
+                                                <DataTrigger Binding="{Binding IsPast}" Value="True">
+                                                    <Setter TargetName="Root" Property="Opacity" Value="0.55" />
+                                                </DataTrigger>
+                                            </DataTemplate.Triggers>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+                            </ScrollViewer>
+                        </Grid>
+
+                        <!-- Árvore de estudo -->
+                        <Grid Grid.Column="1" Visibility="{Binding HasSelection, Converter={StaticResource BoolToVisibility}}">
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="*" />
+                                <RowDefinition Height="Auto" />
+                            </Grid.RowDefinitions>
+
+                            <TextBlock Grid.Row="0" Text="{Binding DetailTitle}" FontSize="15" FontWeight="SemiBold"
+                                       TextWrapping="Wrap" Foreground="{DynamicResource TextPrimaryBrush}" />
+
+                            <StackPanel Grid.Row="1" Margin="0,4,0,0">
+                                <TextBlock Text="{Binding DetailDate}" FontSize="12"
+                                           Foreground="{DynamicResource TextSecondaryBrush}" />
+                                <!-- Os três limites ficam à vista: eles não são padrões invisíveis. -->
+                                <TextBlock Text="{Binding PolicyText}" FontSize="11" Margin="0,2,0,0"
+                                           Foreground="{DynamicResource TextMutedBrush}" />
+                            </StackPanel>
+
+                            <StackPanel Grid.Row="2" Margin="0,10,0,10">
+                                <TextBlock Text="{Binding TopicProgress}" FontSize="12"
+                                           Foreground="{DynamicResource TextSecondaryBrush}" />
+                                <TextBlock Text="{Binding ListProgress}" FontSize="12" Margin="0,2,0,0"
+                                           Foreground="{DynamicResource TextSecondaryBrush}" />
+                                <TextBlock Text="{Binding SessionProgress}" FontSize="12" Margin="0,2,0,0"
+                                           Foreground="{DynamicResource TextSecondaryBrush}" />
+                                <TextBlock Text="{Binding WaitingSummary}" FontSize="12" Margin="0,2,0,0"
+                                           Foreground="{DynamicResource WarningBrush}"
+                                           Visibility="{Binding HasWaiting, Converter={StaticResource BoolToVisibility}}" />
+                                <TextBlock Text="{Binding ReviewSummary}" FontSize="12" Margin="0,2,0,0"
+                                           TextWrapping="Wrap"
+                                           Foreground="{DynamicResource DangerBrush}"
+                                           Visibility="{Binding HasReview, Converter={StaticResource BoolToVisibility}}" />
+
+                                <StackPanel Orientation="Horizontal" Margin="0,12,0,0">
+                                    <Button Style="{StaticResource GhostButton}" Content="+ Assunto" Padding="10,4"
+                                            Foreground="{DynamicResource TextPrimaryBrush}"
+                                            Command="{Binding AddSubjectCommand}" />
+                                    <Button Style="{StaticResource GhostButton}" Content="Gerar plano de estudo"
+                                            Padding="10,4" Margin="8,0,0,0" Command="{Binding GeneratePlanCommand}" />
+                                    <Button Style="{StaticResource GhostButton}" Content="Editar" Padding="10,4"
+                                            Margin="8,0,0,0" Command="{Binding EditCommand}" />
+                                    <Button Style="{StaticResource GhostButton}" Content="Excluir" Padding="10,4"
+                                            Margin="8,0,0,0" Foreground="{DynamicResource DangerBrush}"
+                                            Command="{Binding RequestDeleteExamCommand}" />
+                                </StackPanel>
+
+                                <!-- Editor inline de assunto novo: um nome e pronto -->
+                                <Border Padding="10,8" CornerRadius="8" Margin="0,10,0,0"
+                                        BorderThickness="1" BorderBrush="{DynamicResource DropIndicatorBrush}"
+                                        Visibility="{Binding IsInlineOpen, Converter={StaticResource BoolToVisibility}}">
+                                    <StackPanel>
+                                        <TextBlock Text="{Binding InlineHeader}" FontSize="11" Margin="0,0,0,6"
+                                                   Foreground="{DynamicResource TextMutedBrush}" />
+                                        <!-- Cada caixa diz o que espera enquanto está vazia; sem isso
+                                             elas são três retângulos sem nome nenhum. -->
+                                        <WrapPanel>
+                                            <Grid Width="200" Margin="0,0,0,4">
+                                                <TextBox Style="{StaticResource WidgetTextBox}"
+                                                         Text="{Binding InlineTitle, UpdateSourceTrigger=PropertyChanged}" />
+                                                <TextBlock Text="{Binding InlineTitlePlaceholder}" Margin="10,0"
+                                                           VerticalAlignment="Center" IsHitTestVisible="False"
+                                                           Foreground="{DynamicResource TextMutedBrush}"
+                                                           Visibility="{Binding InlineTitle, Converter={StaticResource EmptyStringToVisibility}}" />
+                                            </Grid>
+
+                                            <Grid Width="96" Margin="8,0,0,4"
+                                                  Visibility="{Binding IsInlineDurationVisible, Converter={StaticResource BoolToVisibility}}">
+                                                <TextBox Style="{StaticResource WidgetTextBox}"
+                                                         ToolTip="Duração estimada. Aceita 1h30, 90 ou 1:30. Pode ficar em branco."
+                                                         Text="{Binding InlineMinutes, UpdateSourceTrigger=PropertyChanged}" />
+                                                <TextBlock Text="duração" Margin="10,0" VerticalAlignment="Center"
+                                                           IsHitTestVisible="False"
+                                                           Foreground="{DynamicResource TextMutedBrush}"
+                                                           Visibility="{Binding InlineMinutes, Converter={StaticResource EmptyStringToVisibility}}" />
+                                            </Grid>
+
+                                            <Grid Width="96" Margin="8,0,0,4"
+                                                  Visibility="{Binding IsInlineListFields, Converter={StaticResource BoolToVisibility}}">
+                                                <TextBox Style="{StaticResource WidgetTextBox}"
+                                                         ToolTip="Quantas questões a lista tem. Pode ficar em branco."
+                                                         Text="{Binding InlineQuestions, UpdateSourceTrigger=PropertyChanged}" />
+                                                <TextBlock Text="questões" Margin="10,0" VerticalAlignment="Center"
+                                                           IsHitTestVisible="False"
+                                                           Foreground="{DynamicResource TextMutedBrush}"
+                                                           Visibility="{Binding InlineQuestions, Converter={StaticResource EmptyStringToVisibility}}" />
+                                            </Grid>
+
+                                            <Button Style="{StaticResource GhostButton}" Content="Adicionar" Padding="10,4"
+                                                    Margin="8,0,0,4" Foreground="{DynamicResource TextPrimaryBrush}"
+                                                    Command="{Binding CommitInlineCommand}" />
+                                            <Button Style="{StaticResource GhostButton}" Content="Cancelar" Padding="10,4"
+                                                    Margin="4,0,0,4" Command="{Binding CancelInlineCommand}" />
+                                        </WrapPanel>
+
+                                        <TextBlock Text="{Binding InlineHint}" FontSize="11" Margin="0,6,0,0"
+                                                   TextWrapping="Wrap"
+                                                   Foreground="{DynamicResource TextMutedBrush}" />
+                                        <CheckBox Content="Esta lista depende da teoria deste assunto" Margin="0,8,0,0"
+                                                  Foreground="{DynamicResource TextSecondaryBrush}"
+                                                  IsChecked="{Binding InlineDependOnTheory}"
+                                                  Visibility="{Binding IsInlineListFields, Converter={StaticResource BoolToVisibility}}" />
+                                    </StackPanel>
+                                </Border>
+                            </StackPanel>
+
+                            <TextBlock Grid.Row="3" VerticalAlignment="Top" TextWrapping="Wrap"
+                                       Text="A árvore está vazia. Comece por um assunto — depois pendure teoria, listas e o que mais precisar dentro dele."
+                                       Foreground="{DynamicResource TextMutedBrush}"
+                                       Visibility="{Binding IsTreeEmpty, Converter={StaticResource BoolToVisibility}}" />
+
+                            <ScrollViewer Grid.Row="3" Style="{StaticResource WidgetScrollViewer}">
+                                <ItemsControl ItemsSource="{Binding Tree}">
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate DataType="{x:Type vm:StudyNodeViewModel}">
+                                            <StackPanel>
+                                                <Border x:Name="NodeRoot" CornerRadius="6" Padding="8,6" Margin="0,1"
+                                                        Background="Transparent" BorderThickness="1"
+                                                        BorderBrush="Transparent"
+                                                        MouseLeftButtonUp="StudyNode_Click">
+                                                    <Grid Margin="{Binding Indent, Converter={StaticResource IndentToMargin}}">
+                                                        <Grid.RowDefinitions>
+                                                            <RowDefinition Height="Auto" />
+                                                            <RowDefinition Height="Auto" />
+                                                            <RowDefinition Height="Auto" />
+                                                        </Grid.RowDefinitions>
+                                                        <Grid.ColumnDefinitions>
+                                                            <ColumnDefinition Width="Auto" />
+                                                            <ColumnDefinition Width="*" />
+                                                            <ColumnDefinition Width="Auto" />
+                                                        </Grid.ColumnDefinitions>
+
+                                                        <!-- Estado por símbolo e por texto, nunca só por cor -->
+                                                        <TextBlock x:Name="Glyph" Grid.Row="0" Grid.Column="0"
+                                                                   Text="{Binding StateGlyph}" Margin="0,0,8,0"
+                                                                   ToolTip="{Binding StateText}"
+                                                                   Foreground="{DynamicResource TextSecondaryBrush}" />
+
+                                                        <StackPanel Grid.Row="0" Grid.Column="1">
+                                                            <TextBlock x:Name="TitleText" Text="{Binding Title}"
+                                                                       TextWrapping="Wrap"
+                                                                       Foreground="{DynamicResource TextPrimaryBrush}" />
+                                                            <TextBlock Text="{Binding Details}" FontSize="11" Margin="0,1,0,0"
+                                                                       Foreground="{DynamicResource TextMutedBrush}"
+                                                                       Visibility="{Binding HasDetails, Converter={StaticResource BoolToVisibility}}" />
+                                                            <TextBlock Text="{Binding AfterText}" FontSize="11" Margin="0,2,0,0"
+                                                                       TextWrapping="Wrap"
+                                                                       Foreground="{DynamicResource WarningBrush}"
+                                                                       Visibility="{Binding IsWaiting, Converter={StaticResource BoolToVisibility}}" />
+                                                        </StackPanel>
+
+                                                        <TextBlock Grid.Row="0" Grid.Column="2" Text="{Binding TypeLabel}"
+                                                                   FontSize="9" VerticalAlignment="Center" Margin="8,0,0,0"
+                                                                   Foreground="{DynamicResource TextMutedBrush}" />
+
+                                                        <!-- Domínio: quatro níveis a um clique -->
+                                                        <StackPanel x:Name="MasteryRow" Grid.Row="1" Grid.Column="1"
+                                                                    Orientation="Horizontal" Margin="0,6,0,0"
+                                                                    Visibility="{Binding IsPlannable, Converter={StaticResource BoolToVisibility}}">
+                                                            <CheckBox Style="{StaticResource TaskCheckBox}" Margin="0,0,10,0"
+                                                                      VerticalAlignment="Center"
+                                                                      ToolTip="Marcar como concluído"
+                                                                      IsChecked="{Binding IsCompleted}" />
+                                                            <RadioButton Content="Não estudado" Style="{StaticResource MasteryToggle}"
+                                                                         IsChecked="{Binding Mastery, Converter={StaticResource EnumToBoolean}, ConverterParameter=NotStudied, Mode=TwoWay}" />
+                                                            <RadioButton Content="Fraco" Style="{StaticResource MasteryToggle}"
+                                                                         IsChecked="{Binding Mastery, Converter={StaticResource EnumToBoolean}, ConverterParameter=Weak, Mode=TwoWay}" />
+                                                            <RadioButton Content="Razoável" Style="{StaticResource MasteryToggle}"
+                                                                         IsChecked="{Binding Mastery, Converter={StaticResource EnumToBoolean}, ConverterParameter=Fair, Mode=TwoWay}" />
+                                                            <RadioButton Content="Bom" Style="{StaticResource MasteryToggle}"
+                                                                         IsChecked="{Binding Mastery, Converter={StaticResource EnumToBoolean}, ConverterParameter=Good, Mode=TwoWay}" />
+                                                        </StackPanel>
+
+                                                        <!-- Assunto: acrescentar filho ali mesmo, sem abrir janela -->
+                                                        <StackPanel x:Name="AddRow" Grid.Row="2" Grid.Column="1"
+                                                                    Orientation="Horizontal" Margin="0,6,0,0"
+                                                                    Visibility="Collapsed">
+                                                            <Button Style="{StaticResource GhostButton}" Content="+ Teoria"
+                                                                    Padding="6,2" FontSize="11" Tag="Theory"
+                                                                    Click="AddStudyNode_Click" />
+                                                            <Button Style="{StaticResource GhostButton}" Content="+ Lista"
+                                                                    Padding="6,2" FontSize="11" Margin="4,0,0,0"
+                                                                    Tag="ExerciseList" Click="AddStudyNode_Click" />
+                                                            <Button Style="{StaticResource GhostButton}" Content="+ Outro"
+                                                                    Padding="6,2" FontSize="11" Margin="4,0,0,0"
+                                                                    Tag="Custom" Click="AddStudyNode_Click" />
+                                                        </StackPanel>
+                                                    </Grid>
+                                                </Border>
+                                            </StackPanel>
+
+                                            <DataTemplate.Triggers>
+                                                <DataTrigger Binding="{Binding IsSubject}" Value="True">
+                                                    <Setter TargetName="AddRow" Property="Visibility" Value="Visible" />
+                                                    <Setter TargetName="TitleText" Property="FontWeight" Value="SemiBold" />
+                                                    <Setter TargetName="Glyph" Property="Text" Value="▼" />
+                                                </DataTrigger>
+                                                <DataTrigger Binding="{Binding IsWaiting}" Value="True">
+                                                    <Setter TargetName="Glyph" Property="Foreground"
+                                                            Value="{DynamicResource WarningBrush}" />
+                                                    <Setter TargetName="TitleText" Property="Foreground"
+                                                            Value="{DynamicResource TextSecondaryBrush}" />
+                                                </DataTrigger>
+                                                <DataTrigger Binding="{Binding IsCompleted}" Value="True">
+                                                    <Setter TargetName="TitleText" Property="TextDecorations"
+                                                            Value="Strikethrough" />
+                                                    <Setter TargetName="TitleText" Property="Foreground"
+                                                            Value="{DynamicResource TextMutedBrush}" />
+                                                </DataTrigger>
+                                                <Trigger SourceName="NodeRoot" Property="IsMouseOver" Value="True">
+                                                    <Setter TargetName="NodeRoot" Property="Background"
+                                                            Value="{DynamicResource HoverBrush}" />
+                                                </Trigger>
+                                                <DataTrigger Binding="{Binding IsSelected}" Value="True">
+                                                    <Setter TargetName="NodeRoot" Property="BorderBrush"
+                                                            Value="{DynamicResource DropIndicatorBrush}" />
+                                                </DataTrigger>
+                                            </DataTemplate.Triggers>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+                            </ScrollViewer>
+
+                            <!-- Painel do nó selecionado: edição e dependências, sem janela nova -->
+                            <Border Grid.Row="4" Margin="0,10,0,0" Padding="12,10" CornerRadius="8"
+                                    BorderThickness="1" BorderBrush="{DynamicResource FieldBorderBrush}"
+                                    Background="{DynamicResource FieldBackgroundBrush}"
+                                    Visibility="{Binding HasSelectedNode, Converter={StaticResource BoolToVisibility}}">
+                                <Grid>
+                                    <Grid.RowDefinitions>
+                                        <RowDefinition Height="Auto" />
+                                        <RowDefinition Height="Auto" />
+                                        <RowDefinition Height="Auto" />
+                                        <RowDefinition Height="Auto" />
+                                    </Grid.RowDefinitions>
+
+                                    <Grid Grid.Row="0">
+                                        <TextBlock Text="{Binding SelectedNode.Title}" FontWeight="SemiBold"
+                                                   TextWrapping="Wrap"
+                                                   Foreground="{DynamicResource TextPrimaryBrush}" />
+                                        <Button Style="{StaticResource GhostButton}" Content="Fechar" Padding="8,2"
+                                                FontSize="11" HorizontalAlignment="Right"
+                                                Command="{Binding CloseNodePanelCommand}" />
+                                    </Grid>
+
+                                    <WrapPanel Grid.Row="1" Margin="0,10,0,0">
+                                        <TextBlock Text="Duração" VerticalAlignment="Center" FontSize="11"
+                                                   Margin="0,0,0,4"
+                                                   Foreground="{DynamicResource TextSecondaryBrush}" />
+                                        <TextBox Style="{StaticResource WidgetTextBox}" Width="80" Margin="8,0,0,4"
+                                                 ToolTip="Aceita 1h30, 90 ou 1:30. Em branco significa duração desconhecida."
+                                                 Text="{Binding NodeMinutes, UpdateSourceTrigger=PropertyChanged}" />
+                                        <TextBlock Text="Questões" VerticalAlignment="Center" FontSize="11" Margin="12,0,0,4"
+                                                   Foreground="{DynamicResource TextSecondaryBrush}"
+                                                   Visibility="{Binding IsNodeListFields, Converter={StaticResource BoolToVisibility}}" />
+                                        <TextBox Style="{StaticResource WidgetTextBox}" Width="60" Margin="8,0,0,4"
+                                                 Visibility="{Binding IsNodeListFields, Converter={StaticResource BoolToVisibility}}"
+                                                 Text="{Binding NodeQuestions, UpdateSourceTrigger=PropertyChanged}" />
+                                        <CheckBox Content="Pode ser dividido em sessões" Margin="14,0,0,4"
+                                                  VerticalAlignment="Center"
+                                                  ToolTip="Desmarcado, ele precisa caber numa sessão só."
+                                                  Foreground="{DynamicResource TextPrimaryBrush}"
+                                                  IsChecked="{Binding NodeCanSplit}" />
+                                        <Button Style="{StaticResource GhostButton}" Content="Salvar" Padding="10,4"
+                                                Margin="12,0,0,4" Foreground="{DynamicResource TextPrimaryBrush}"
+                                                Command="{Binding SaveNodeCommand}" />
+                                        <Button Style="{StaticResource GhostButton}" Content="Remover" Padding="10,4"
+                                                Margin="6,0,0,4" Foreground="{DynamicResource DangerBrush}"
+                                                Command="{Binding DeleteNodeCommand}" />
+                                    </WrapPanel>
+
+                                    <StackPanel Grid.Row="2" Margin="0,12,0,0">
+                                        <TextBlock Text="DEPENDE DE" FontSize="10" FontWeight="SemiBold" Margin="0,0,0,4"
+                                                   Foreground="{DynamicResource TextMutedBrush}" />
+                                        <TextBlock Text="Só a conclusão de verdade destrava um item. Ter data planejada ou sessão criada não conta."
+                                                   FontSize="11" TextWrapping="Wrap" Margin="0,0,0,6"
+                                                   Foreground="{DynamicResource TextMutedBrush}" />
+                                        <ScrollViewer Style="{StaticResource WidgetScrollViewer}" MaxHeight="110">
+                                            <ItemsControl ItemsSource="{Binding DependencyOptions}">
+                                                <ItemsControl.ItemTemplate>
+                                                    <DataTemplate DataType="{x:Type vm:DependencyOptionViewModel}">
+                                                        <StackPanel Orientation="Horizontal" Margin="0,2">
+                                                            <CheckBox IsChecked="{Binding IsChecked}"
+                                                                      VerticalAlignment="Center"
+                                                                      Foreground="{DynamicResource TextPrimaryBrush}" />
+                                                            <TextBlock Text="{Binding Title}" Margin="6,0,0,0"
+                                                                       VerticalAlignment="Center"
+                                                                       Foreground="{DynamicResource TextPrimaryBrush}" />
+                                                            <TextBlock Text="{Binding Context}" Margin="6,0,0,0" FontSize="10"
+                                                                       VerticalAlignment="Center"
+                                                                       Foreground="{DynamicResource TextMutedBrush}"
+                                                                       Visibility="{Binding HasContext, Converter={StaticResource BoolToVisibility}}" />
+                                                        </StackPanel>
+                                                    </DataTemplate>
+                                                </ItemsControl.ItemTemplate>
+                                            </ItemsControl>
+                                        </ScrollViewer>
+                                    </StackPanel>
+
+                                    <TextBlock Grid.Row="3" Text="{Binding DependencyError}" FontSize="11" Margin="0,8,0,0"
+                                               TextWrapping="Wrap" Foreground="{DynamicResource DangerBrush}"
+                                               Visibility="{Binding HasDependencyError, Converter={StaticResource BoolToVisibility}}" />
+                                </Grid>
+                            </Border>
+                        </Grid>
+
+                        <!-- Formulário da prova: dados gerais e os três limites de estudo -->
+                        <Border Grid.ColumnSpan="2" Background="{DynamicResource OverlayBrush}"
+                                Visibility="{Binding IsFormOpen, Converter={StaticResource BoolToVisibility}}">
+                            <Border Width="420" VerticalAlignment="Center" HorizontalAlignment="Center" Padding="20"
+                                    CornerRadius="12" Background="{DynamicResource FieldBackgroundBrush}"
+                                    BorderBrush="{DynamicResource FieldBorderBrush}" BorderThickness="1">
+                                <StackPanel>
+                                    <TextBlock Text="{Binding FormHeader}" FontWeight="SemiBold" FontSize="15"
+                                               Margin="0,0,0,14" Foreground="{DynamicResource TextPrimaryBrush}" />
+
+                                    <TextBlock Text="Disciplina" Foreground="{DynamicResource TextSecondaryBrush}" />
+                                    <TextBox Style="{StaticResource WidgetTextBox}" Margin="0,6,0,12"
+                                             Text="{Binding FormSubject, UpdateSourceTrigger=PropertyChanged}" />
+
+                                    <TextBlock Foreground="{DynamicResource TextSecondaryBrush}">
+                                        <Run Text="Título" />
+                                        <Run Text="(opcional)" FontSize="11" Foreground="{DynamicResource TextMutedBrush}" />
+                                    </TextBlock>
+                                    <TextBox Style="{StaticResource WidgetTextBox}" Margin="0,6,0,12"
+                                             Text="{Binding FormTitle, UpdateSourceTrigger=PropertyChanged}" />
+
+                                    <TextBlock Text="Data da prova" Foreground="{DynamicResource TextSecondaryBrush}" />
+                                    <DatePicker SelectedDate="{Binding FormDate}" Width="150" HorizontalAlignment="Left"
+                                                Margin="0,6,0,16" />
+
+                                    <TextBlock Text="LIMITES DE ESTUDO" FontSize="10" FontWeight="SemiBold" Margin="0,0,0,4"
+                                               Foreground="{DynamicResource TextMutedBrush}" />
+                                    <TextBlock TextWrapping="Wrap" FontSize="11" Margin="0,0,0,10"
+                                               Foreground="{DynamicResource TextMutedBrush}"
+                                               Text="São coisa diferente da capacidade geral do dia: ter 8h livres não significa conseguir estudar 8h da mesma matéria." />
+
+                                    <Grid>
+                                        <Grid.RowDefinitions>
+                                            <RowDefinition Height="Auto" />
+                                            <RowDefinition Height="Auto" />
+                                            <RowDefinition Height="Auto" />
+                                        </Grid.RowDefinitions>
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="100" />
+                                        </Grid.ColumnDefinitions>
+
+                                        <TextBlock Grid.Row="0" Grid.Column="0" Text="Meta confortável por dia"
+                                                   VerticalAlignment="Center" Margin="0,4"
+                                                   Foreground="{DynamicResource TextPrimaryBrush}" />
+                                        <TextBox Grid.Row="0" Grid.Column="1" Style="{StaticResource WidgetTextBox}"
+                                                 Margin="0,4"
+                                                 Text="{Binding FormComfortable, UpdateSourceTrigger=PropertyChanged}" />
+
+                                        <TextBlock Grid.Row="1" Grid.Column="0" Text="Máximo desta prova por dia"
+                                                   VerticalAlignment="Center" Margin="0,4"
+                                                   Foreground="{DynamicResource TextPrimaryBrush}" />
+                                        <TextBox Grid.Row="1" Grid.Column="1" Style="{StaticResource WidgetTextBox}"
+                                                 Margin="0,4"
+                                                 Text="{Binding FormMaxDaily, UpdateSourceTrigger=PropertyChanged}" />
+
+                                        <TextBlock Grid.Row="2" Grid.Column="0" Text="Máximo de uma sessão contínua"
+                                                   VerticalAlignment="Center" Margin="0,4"
+                                                   Foreground="{DynamicResource TextPrimaryBrush}" />
+                                        <TextBox Grid.Row="2" Grid.Column="1" Style="{StaticResource WidgetTextBox}"
+                                                 Margin="0,4"
+                                                 Text="{Binding FormMaxSession, UpdateSourceTrigger=PropertyChanged}" />
+                                    </Grid>
+
+                                    <TextBlock Text="{Binding FormError}" TextWrapping="Wrap" Margin="0,10,0,0"
+                                               Foreground="{DynamicResource DangerBrush}"
+                                               Visibility="{Binding HasFormError, Converter={StaticResource BoolToVisibility}}" />
+
+                                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,18,0,0">
+                                        <Button Style="{StaticResource GhostButton}" Content="Cancelar" Padding="12,6"
+                                                Command="{Binding CancelFormCommand}" />
+                                        <Button Style="{StaticResource GhostButton}" Content="Salvar" Padding="12,6"
+                                                Margin="8,0,0,0" Foreground="{DynamicResource TextPrimaryBrush}"
+                                                Command="{Binding CommitFormCommand}" />
+                                    </StackPanel>
+                                </StackPanel>
+                            </Border>
+                        </Border>
+
+                        <!-- Plano de estudo proposto -->
+                        <Border Grid.ColumnSpan="2" Background="{DynamicResource OverlayBrush}"
+                                Visibility="{Binding IsPlanOpen, Converter={StaticResource BoolToVisibility}}">
+                            <Border Width="520" MaxHeight="540" VerticalAlignment="Center" HorizontalAlignment="Center"
+                                    Padding="20" CornerRadius="12" Background="{DynamicResource FieldBackgroundBrush}"
+                                    BorderBrush="{DynamicResource FieldBorderBrush}" BorderThickness="1">
+                                <Grid>
+                                    <Grid.RowDefinitions>
+                                        <RowDefinition Height="Auto" />
+                                        <RowDefinition Height="Auto" />
+                                        <RowDefinition Height="*" />
+                                        <RowDefinition Height="Auto" />
+                                        <RowDefinition Height="Auto" />
+                                    </Grid.RowDefinitions>
+
+                                    <StackPanel Grid.Row="0" Margin="0,0,0,10">
+                                        <TextBlock Text="PLANO DE ESTUDO SUGERIDO" FontWeight="SemiBold" FontSize="14"
+                                                   Foreground="{DynamicResource TextPrimaryBrush}" />
+                                        <TextBlock Text="{Binding PlanSubtitle}" FontSize="11" Margin="0,2,0,0"
+                                                   TextWrapping="Wrap"
+                                                   Foreground="{DynamicResource TextSecondaryBrush}" />
+
+                                        <!-- A recomendação principal: o usuário não escolhe dia nenhum. -->
+                                        <Border Margin="0,10,0,0" Padding="10,8" CornerRadius="8"
+                                                BorderThickness="1" BorderBrush="{DynamicResource DropIndicatorBrush}"
+                                                Visibility="{Binding HasStart, Converter={StaticResource BoolToVisibility}}">
+                                            <TextBlock Text="{Binding StartText}" TextWrapping="Wrap"
+                                                       Foreground="{DynamicResource TextPrimaryBrush}" />
+                                        </Border>
+                                    </StackPanel>
+
+                                    <!-- Plano impossível: os números na mesa e as saídas possíveis -->
+                                    <Border Grid.Row="1" Padding="10,8" CornerRadius="8" Margin="0,0,0,10"
+                                            BorderThickness="1" BorderBrush="{DynamicResource DangerBrush}"
+                                            Visibility="{Binding IsImpossible, Converter={StaticResource BoolToVisibility}}">
+                                        <StackPanel>
+                                            <TextBlock Text="⚠ Não existe um plano viável com as restrições atuais."
+                                                       FontWeight="SemiBold" TextWrapping="Wrap"
+                                                       Foreground="{DynamicResource DangerBrush}" />
+                                            <TextBlock Text="{Binding DeficitText}" FontSize="11" Margin="0,4,0,8"
+                                                       TextWrapping="Wrap"
+                                                       Foreground="{DynamicResource TextSecondaryBrush}" />
+                                            <WrapPanel>
+                                                <Button Style="{StaticResource GhostButton}" Padding="8,3" FontSize="11"
+                                                        Margin="0,0,6,4" Content="Aumentar limite temporariamente"
+                                                        Command="{Binding RaiseLimitCommand}" />
+                                                <Button Style="{StaticResource GhostButton}" Padding="8,3" FontSize="11"
+                                                        Margin="0,0,6,4" Content="Ajustar conteúdos"
+                                                        Command="{Binding AdjustContentCommand}" />
+                                                <Button Style="{StaticResource GhostButton}" Padding="8,3" FontSize="11"
+                                                        Margin="0,0,6,4" Content="Ajustar estimativas"
+                                                        Command="{Binding AdjustContentCommand}" />
+                                                <Button Style="{StaticResource GhostButton}" Padding="8,3" FontSize="11"
+                                                        Margin="0,0,0,4" Content="Manter plano incompleto"
+                                                        Command="{Binding AcceptPlanCommand}" />
+                                            </WrapPanel>
+                                        </StackPanel>
+                                    </Border>
+
+                                    <ScrollViewer Grid.Row="2" Style="{StaticResource WidgetScrollViewer}">
+                                        <StackPanel>
+                                            <ItemsControl ItemsSource="{Binding PlanRows}">
+                                                <ItemsControl.ItemTemplate>
+                                                    <DataTemplate DataType="{x:Type vm:StudySessionRowViewModel}">
+                                                        <Grid Margin="0,4">
+                                                            <Grid.ColumnDefinitions>
+                                                                <ColumnDefinition Width="130" />
+                                                                <ColumnDefinition Width="*" />
+                                                            </Grid.ColumnDefinitions>
+                                                            <TextBlock Grid.Column="0" Text="{Binding DateText}"
+                                                                       VerticalAlignment="Center"
+                                                                       Foreground="{DynamicResource TextSecondaryBrush}"
+                                                                       Visibility="{Binding DataContext.IsPlanReadOnly, RelativeSource={RelativeSource AncestorType=ItemsControl}, Converter={StaticResource BoolToVisibility}}" />
+                                                            <DatePicker Grid.Column="0" Width="120"
+                                                                        HorizontalAlignment="Left"
+                                                                        SelectedDate="{Binding Date}"
+                                                                        Visibility="{Binding DataContext.IsAdjustingPlan, RelativeSource={RelativeSource AncestorType=ItemsControl}, Converter={StaticResource BoolToVisibility}}" />
+                                                            <StackPanel Grid.Column="1" Margin="8,0,0,0">
+                                                                <TextBlock Text="{Binding Title}" TextWrapping="Wrap"
+                                                                           Foreground="{DynamicResource TextPrimaryBrush}" />
+                                                                <TextBlock Text="{Binding DetailText}" FontSize="11"
+                                                                           Foreground="{DynamicResource TextMutedBrush}" />
+                                                                <!-- Cada sessão diz por que foi escolhida -->
+                                                                <TextBlock Text="{Binding Explanation}" FontSize="11"
+                                                                           TextWrapping="Wrap" Margin="0,2,0,0"
+                                                                           Foreground="{DynamicResource TextSecondaryBrush}" />
+                                                            </StackPanel>
+                                                        </Grid>
+                                                    </DataTemplate>
+                                                </ItemsControl.ItemTemplate>
+                                            </ItemsControl>
+
+                                            <TextBlock Text="Nenhuma sessão pôde ser planejada agora."
+                                                       Margin="0,6,0,0" TextWrapping="Wrap"
+                                                       Foreground="{DynamicResource TextMutedBrush}"
+                                                       Visibility="{Binding IsPlanEmpty, Converter={StaticResource BoolToVisibility}}" />
+
+                                            <ItemsControl ItemsSource="{Binding PlanWaiting}" Margin="0,10,0,0"
+                                                          Visibility="{Binding HasPlanWaiting, Converter={StaticResource BoolToVisibility}}">
+                                                <ItemsControl.ItemTemplate>
+                                                    <DataTemplate>
+                                                        <TextBlock Text="{Binding}" FontSize="11" TextWrapping="Wrap"
+                                                                   Margin="0,1"
+                                                                   Foreground="{DynamicResource WarningBrush}" />
+                                                    </DataTemplate>
+                                                </ItemsControl.ItemTemplate>
+                                            </ItemsControl>
+                                        </StackPanel>
+                                    </ScrollViewer>
+
+                                    <StackPanel Grid.Row="3" Margin="0,10,0,0">
+                                        <TextBlock Text="{Binding MarginText}" FontSize="11"
+                                                   Foreground="{DynamicResource DropIndicatorBrush}"
+                                                   Visibility="{Binding HasMargin, Converter={StaticResource BoolToVisibility}}" />
+
+                                        <ItemsControl ItemsSource="{Binding PlanNotes}" Margin="0,4,0,0"
+                                                      Visibility="{Binding HasPlanNotes, Converter={StaticResource BoolToVisibility}}">
+                                            <ItemsControl.ItemTemplate>
+                                                <DataTemplate>
+                                                    <TextBlock Text="{Binding}" FontSize="11" TextWrapping="Wrap" Margin="0,1"
+                                                               Foreground="{DynamicResource TextMutedBrush}" />
+                                                </DataTemplate>
+                                            </ItemsControl.ItemTemplate>
+                                        </ItemsControl>
+
+                                        <ItemsControl ItemsSource="{Binding PlanConflicts}" Margin="0,4,0,0"
+                                                      Visibility="{Binding HasPlanConflicts, Converter={StaticResource BoolToVisibility}}">
+                                            <ItemsControl.ItemTemplate>
+                                                <DataTemplate>
+                                                    <TextBlock Text="{Binding}" FontSize="11" TextWrapping="Wrap" Margin="0,1"
+                                                               Foreground="{DynamicResource DangerBrush}" />
+                                                </DataTemplate>
+                                            </ItemsControl.ItemTemplate>
+                                        </ItemsControl>
+                                    </StackPanel>
+
+                                    <StackPanel Grid.Row="4" Orientation="Horizontal" HorizontalAlignment="Right"
+                                                Margin="0,14,0,0">
+                                        <Button Style="{StaticResource GhostButton}" Content="Cancelar" Padding="12,6"
+                                                Command="{Binding CancelPlanCommand}" />
+                                        <Button Style="{StaticResource GhostButton}" Content="Ajustar datas" Padding="12,6"
+                                                Margin="8,0,0,0"
+                                                Command="{Binding AdjustPlanCommand}"
+                                                Visibility="{Binding IsPlanReadOnly, Converter={StaticResource BoolToVisibility}}" />
+                                        <Button Style="{StaticResource GhostButton}" Content="Aceitar" Padding="12,6"
+                                                Margin="8,0,0,0" Foreground="{DynamicResource TextPrimaryBrush}"
+                                                Command="{Binding AcceptPlanCommand}" />
+                                    </StackPanel>
+                                </Grid>
+                            </Border>
+                        </Border>
+
+                        <!-- Confirmação de remoção -->
+                        <Border Grid.ColumnSpan="2" Background="{DynamicResource OverlayBrush}"
+                                Visibility="{Binding IsDeleteAskVisible, Converter={StaticResource BoolToVisibility}}">
+                            <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center" MaxWidth="380">
+                                <TextBlock Text="{Binding DeleteQuestion}" HorizontalAlignment="Center" FontWeight="SemiBold"
+                                           TextWrapping="Wrap" TextAlignment="Center"
+                                           Foreground="{DynamicResource TextPrimaryBrush}" />
+                                <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" Margin="0,14,0,0">
+                                    <Button Style="{StaticResource GhostButton}" Content="Remover" Padding="12,5"
+                                            Foreground="{DynamicResource DangerBrush}"
+                                            Command="{Binding ConfirmDeleteCommand}" />
+                                    <Button Style="{StaticResource GhostButton}" Content="Cancelar" Padding="12,5"
+                                            Margin="8,0,0,0" Command="{Binding CancelDeleteCommand}" />
+                                </StackPanel>
+                            </StackPanel>
+                        </Border>
+
+                        <!-- Aviso simples -->
+                        <Border Grid.ColumnSpan="2" Background="{DynamicResource OverlayBrush}"
+                                Visibility="{Binding IsNoticeVisible, Converter={StaticResource BoolToVisibility}}">
+                            <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center" MaxWidth="400">
+                                <TextBlock Text="{Binding NoticeText}" HorizontalAlignment="Center" TextWrapping="Wrap"
+                                           TextAlignment="Center" Foreground="{DynamicResource TextPrimaryBrush}" />
+                                <Button Style="{StaticResource GhostButton}" Content="Entendi" Padding="12,5"
+                                        Margin="0,14,0,0" HorizontalAlignment="Center"
+                                        Command="{Binding DismissNoticeCommand}" />
+                            </StackPanel>
+                        </Border>
+                    </Grid>
+
+                    <!-- Seção Algum dia -->
+                    <Grid Visibility="{Binding IsSomedayVisible, Converter={StaticResource BoolToVisibility}}">
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="*" />
+                        </Grid.RowDefinitions>
+                        <TextBlock Grid.Row="0" Text="Algum dia" FontWeight="SemiBold" Margin="0,0,0,10"
+                                   Foreground="{DynamicResource TextPrimaryBrush}" />
+                        <TextBlock Grid.Row="1" Text="Nada guardado para depois." VerticalAlignment="Top"
+                                   Foreground="{DynamicResource TextSecondaryBrush}"
+                                   Visibility="{Binding IsSomedayEmpty, Converter={StaticResource BoolToVisibility}}" />
+                        <ScrollViewer Grid.Row="1" Style="{StaticResource WidgetScrollViewer}">
+                            <ItemsControl ItemsSource="{Binding SomedayItems}" ItemTemplate="{StaticResource TaskRowTemplate}" />
+                        </ScrollViewer>
+                    </Grid>
+                </Grid>
+            </Border>
+        </Grid>
+
+        <!-- Nova tarefa -->
+        <Border Grid.RowSpan="2"
+                Background="{DynamicResource OverlayBrush}"
+                Visibility="{Binding IsTaskFormOpen, Converter={StaticResource BoolToVisibility}}">
+            <Border Width="420"
+                    VerticalAlignment="Center" HorizontalAlignment="Center"
+                    Padding="20"
+                    CornerRadius="12"
+                    Background="{DynamicResource FieldBackgroundBrush}"
+                    BorderBrush="{DynamicResource FieldBorderBrush}"
+                    BorderThickness="1">
+                <StackPanel>
+                    <TextBlock Text="{Binding FormHeader}" FontWeight="SemiBold" FontSize="15" Margin="0,0,0,14"
+                               Foreground="{DynamicResource TextPrimaryBrush}" />
+                    <TextBlock Text="O que precisa ser feito?" Foreground="{DynamicResource TextSecondaryBrush}" />
+                    <TextBox x:Name="NewTaskBox"
+                             Style="{StaticResource WidgetTextBox}"
+                             Margin="0,6,0,16"
+                             Text="{Binding FormTitle, UpdateSourceTrigger=PropertyChanged}"
+                             KeyDown="NewTaskBox_KeyDown" />
+
+                    <TextBlock Text="Quando pretende fazer?" Foreground="{DynamicResource TextSecondaryBrush}" />
+                    <StackPanel Margin="0,8,0,0">
+                        <RadioButton Content="Hoje" Foreground="{DynamicResource TextPrimaryBrush}" Margin="0,3"
+                                     IsChecked="{Binding FormWhen, Converter={StaticResource EnumToBoolean}, ConverterParameter=Today, Mode=TwoWay}" />
+                        <RadioButton Content="Amanhã" Foreground="{DynamicResource TextPrimaryBrush}" Margin="0,3"
+                                     IsChecked="{Binding FormWhen, Converter={StaticResource EnumToBoolean}, ConverterParameter=Tomorrow, Mode=TwoWay}" />
+                        <RadioButton Content="Escolher dia" Foreground="{DynamicResource TextPrimaryBrush}" Margin="0,3"
+                                     IsChecked="{Binding FormWhen, Converter={StaticResource EnumToBoolean}, ConverterParameter=PickDate, Mode=TwoWay}" />
+                        <DatePicker Margin="20,4,0,4"
+                                    SelectedDate="{Binding FormPlannedDate}"
+                                    Visibility="{Binding IsPlannedDatePickerVisible, Converter={StaticResource BoolToVisibility}}" />
+                        <RadioButton Content="Algum dia" Foreground="{DynamicResource TextPrimaryBrush}" Margin="0,3"
+                                     IsChecked="{Binding FormWhen, Converter={StaticResource EnumToBoolean}, ConverterParameter=Someday, Mode=TwoWay}" />
+                    </StackPanel>
+
+                    <TextBlock Margin="0,16,0,0" Foreground="{DynamicResource TextSecondaryBrush}">
+                        <Run Text="Prazo" />
+                        <Run Text="(opcional)" Foreground="{DynamicResource TextMutedBrush}" FontSize="11" />
+                    </TextBlock>
+                    <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
+                        <DatePicker SelectedDate="{Binding FormDueDate}" Width="150" />
+                        <Button Style="{StaticResource GhostButton}" Content="Sem prazo" Padding="8,4" Margin="8,0,0,0"
+                                Command="{Binding ClearDueDateCommand}" />
+                    </StackPanel>
+
+                    <!-- V0.5: duração e divisibilidade. Deixar em branco é dizer
+                         "não sei quanto tempo leva", e isso é uma resposta válida. -->
+                    <TextBlock Margin="0,16,0,0" Foreground="{DynamicResource TextSecondaryBrush}">
+                        <Run Text="Duração estimada" />
+                        <Run Text="(opcional — 1h30, 90)" Foreground="{DynamicResource TextMutedBrush}" FontSize="11" />
+                    </TextBlock>
+                    <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
+                        <TextBox Style="{StaticResource WidgetTextBox}" Width="110"
+                                 Text="{Binding FormMinutes, UpdateSourceTrigger=PropertyChanged}" />
+                        <CheckBox Content="Pode ser dividida em sessões" Margin="12,0,0,0" VerticalAlignment="Center"
+                                  Foreground="{DynamicResource TextPrimaryBrush}"
+                                  IsChecked="{Binding FormCanSplit}" />
+                    </StackPanel>
+
+                    <!-- V0.7: prioridade manual, um fator entre vários -->
+                    <TextBlock Text="Prioridade" Margin="0,16,0,0" Foreground="{DynamicResource TextSecondaryBrush}" />
+                    <StackPanel Orientation="Horizontal" Margin="0,8,0,0">
+                        <RadioButton Content="Alta" Style="{StaticResource MasteryToggle}"
+                                     IsChecked="{Binding FormPriority, Converter={StaticResource EnumToBoolean}, ConverterParameter=High, Mode=TwoWay}" />
+                        <RadioButton Content="Normal" Style="{StaticResource MasteryToggle}"
+                                     IsChecked="{Binding FormPriority, Converter={StaticResource EnumToBoolean}, ConverterParameter=Normal, Mode=TwoWay}" />
+                        <RadioButton Content="Baixa" Style="{StaticResource MasteryToggle}"
+                                     IsChecked="{Binding FormPriority, Converter={StaticResource EnumToBoolean}, ConverterParameter=Low, Mode=TwoWay}" />
+                    </StackPanel>
+
+                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,18,0,0">
+                        <Button Style="{StaticResource GhostButton}" Content="Cancelar" Padding="12,6" Command="{Binding CancelTaskFormCommand}" />
+                        <Button Style="{StaticResource GhostButton}" Content="Adicionar" Padding="12,6" Margin="8,0,0,0"
+                                Foreground="{DynamicResource TextPrimaryBrush}" Command="{Binding CommitTaskFormCommand}" />
+                    </StackPanel>
+                </StackPanel>
+            </Border>
+        </Border>
+
+        <!-- Formulário de rotina -->
+        <Border Grid.RowSpan="2"
+                Background="{DynamicResource OverlayBrush}"
+                Visibility="{Binding IsRoutineFormOpen, Converter={StaticResource BoolToVisibility}}">
+            <Border Width="440"
+                    VerticalAlignment="Center" HorizontalAlignment="Center"
+                    Padding="20"
+                    CornerRadius="12"
+                    Background="{DynamicResource FieldBackgroundBrush}"
+                    BorderBrush="{DynamicResource FieldBorderBrush}"
+                    BorderThickness="1">
+                <StackPanel>
+                    <TextBlock Text="{Binding RoutineFormHeader}" FontWeight="SemiBold" FontSize="15" Margin="0,0,0,14"
+                               Foreground="{DynamicResource TextPrimaryBrush}" />
+
+                    <TextBlock Text="Nome" Foreground="{DynamicResource TextSecondaryBrush}" />
+                    <TextBox Style="{StaticResource WidgetTextBox}" Margin="0,6,0,16"
+                             Text="{Binding RoutineTitle, UpdateSourceTrigger=PropertyChanged}" />
+
+                    <TextBlock Text="Repetição" Foreground="{DynamicResource TextSecondaryBrush}" />
+                    <StackPanel Margin="0,8,0,0">
+                        <RadioButton Content="Todos os dias" Foreground="{DynamicResource TextPrimaryBrush}" Margin="0,3"
+                                     IsChecked="{Binding RoutineType, Converter={StaticResource EnumToBoolean}, ConverterParameter=Daily, Mode=TwoWay}" />
+
+                        <RadioButton Content="Dias específicos" Foreground="{DynamicResource TextPrimaryBrush}" Margin="0,3"
+                                     IsChecked="{Binding RoutineType, Converter={StaticResource EnumToBoolean}, ConverterParameter=DaysOfWeek, Mode=TwoWay}" />
+                        <WrapPanel Margin="20,4,0,4"
+                                   Visibility="{Binding IsDaysOfWeekVisible, Converter={StaticResource BoolToVisibility}}">
+                            <ToggleButton Content="SEG" Style="{StaticResource DayToggle}" IsChecked="{Binding RoutineMonday}" />
+                            <ToggleButton Content="TER" Style="{StaticResource DayToggle}" IsChecked="{Binding RoutineTuesday}" />
+                            <ToggleButton Content="QUA" Style="{StaticResource DayToggle}" IsChecked="{Binding RoutineWednesday}" />
+                            <ToggleButton Content="QUI" Style="{StaticResource DayToggle}" IsChecked="{Binding RoutineThursday}" />
+                            <ToggleButton Content="SEX" Style="{StaticResource DayToggle}" IsChecked="{Binding RoutineFriday}" />
+                            <ToggleButton Content="SÁB" Style="{StaticResource DayToggle}" IsChecked="{Binding RoutineSaturday}" />
+                            <ToggleButton Content="DOM" Style="{StaticResource DayToggle}" IsChecked="{Binding RoutineSunday}" />
+                        </WrapPanel>
+
+                        <RadioButton Content="A cada X dias" Foreground="{DynamicResource TextPrimaryBrush}" Margin="0,3"
+                                     IsChecked="{Binding RoutineType, Converter={StaticResource EnumToBoolean}, ConverterParameter=EveryXDays, Mode=TwoWay}" />
+                        <StackPanel Orientation="Horizontal" Margin="20,4,0,4"
+                                    Visibility="{Binding IsIntervalVisible, Converter={StaticResource BoolToVisibility}}">
+                            <TextBlock Text="Repetir a cada" VerticalAlignment="Center" Foreground="{DynamicResource TextSecondaryBrush}" />
+                            <TextBox Style="{StaticResource WidgetTextBox}" Width="60" Margin="8,0" MaxLength="4"
+                                     Text="{Binding RoutineIntervalDays, UpdateSourceTrigger=PropertyChanged}" />
+                            <TextBlock Text="dias" VerticalAlignment="Center" Foreground="{DynamicResource TextSecondaryBrush}" />
+                        </StackPanel>
+
+                        <RadioButton Content="Mensal" Foreground="{DynamicResource TextPrimaryBrush}" Margin="0,3"
+                                     IsChecked="{Binding RoutineType, Converter={StaticResource EnumToBoolean}, ConverterParameter=Monthly, Mode=TwoWay}" />
+                        <StackPanel Orientation="Horizontal" Margin="20,4,0,4"
+                                    Visibility="{Binding IsDayOfMonthVisible, Converter={StaticResource BoolToVisibility}}">
+                            <TextBlock Text="Todo dia" VerticalAlignment="Center" Foreground="{DynamicResource TextSecondaryBrush}" />
+                            <TextBox Style="{StaticResource WidgetTextBox}" Width="60" Margin="8,0" MaxLength="2"
+                                     Text="{Binding RoutineDayOfMonth, UpdateSourceTrigger=PropertyChanged}" />
+                            <TextBlock Text="de cada mês" VerticalAlignment="Center" Foreground="{DynamicResource TextSecondaryBrush}" />
+                        </StackPanel>
+                    </StackPanel>
+
+                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,18,0,0">
+                        <Button Style="{StaticResource GhostButton}" Content="Cancelar" Padding="12,6" Command="{Binding CancelRoutineFormCommand}" />
+                        <Button Style="{StaticResource GhostButton}" Content="Salvar" Padding="12,6" Margin="8,0,0,0"
+                                Foreground="{DynamicResource TextPrimaryBrush}" Command="{Binding CommitRoutineFormCommand}" />
+                    </StackPanel>
+                </StackPanel>
+            </Border>
+        </Border>
+
+        <!-- Confirmação de exclusão de rotina -->
+        <Border Grid.RowSpan="2"
+                Background="{DynamicResource OverlayBrush}"
+                Visibility="{Binding IsRoutineDeleteVisible, Converter={StaticResource BoolToVisibility}}">
+            <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center" MaxWidth="360">
+                <TextBlock Text="Excluir esta rotina?" HorizontalAlignment="Center" FontWeight="SemiBold"
+                           Foreground="{DynamicResource TextPrimaryBrush}" />
+                <TextBlock Text="As ocorrências futuras deixam de aparecer." HorizontalAlignment="Center" Margin="0,6,0,0"
+                           TextWrapping="Wrap" TextAlignment="Center"
+                           Foreground="{DynamicResource TextSecondaryBrush}" />
+                <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" Margin="0,14,0,0">
+                    <Button Style="{StaticResource GhostButton}" Content="Excluir" Padding="12,5"
+                            Foreground="{DynamicResource DangerBrush}" Command="{Binding ConfirmRoutineDeleteCommand}" />
+                    <Button Style="{StaticResource GhostButton}" Content="Cancelar" Padding="12,5" Margin="8,0,0,0"
+                            Command="{Binding CancelRoutineDeleteCommand}" />
+                </StackPanel>
+            </StackPanel>
+        </Border>
+
+        <!-- Plano sugerido (V0.5/V0.6): nada é aplicado antes de o usuário ver -->
+        <Border Grid.RowSpan="2"
+                Background="{DynamicResource OverlayBrush}"
+                DataContext="{Binding Proposal}"
+                Visibility="{Binding IsOpen, Converter={StaticResource BoolToVisibility}}">
+            <Border Width="480" MaxHeight="520"
+                    VerticalAlignment="Center" HorizontalAlignment="Center"
+                    Padding="20" CornerRadius="12"
+                    Background="{DynamicResource FieldBackgroundBrush}"
+                    BorderBrush="{DynamicResource FieldBorderBrush}" BorderThickness="1">
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="*" />
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                    </Grid.RowDefinitions>
+
+                    <StackPanel Grid.Row="0" Margin="0,0,0,12">
+                        <TextBlock Text="{Binding Header}" FontWeight="SemiBold" FontSize="15"
+                                   Foreground="{DynamicResource TextPrimaryBrush}" />
+                        <TextBlock Text="{Binding Subtitle}" Margin="0,2,0,0" TextWrapping="Wrap" FontSize="11"
+                                   Foreground="{DynamicResource TextSecondaryBrush}" />
+
+                        <!-- A recomendação principal: o usuário não escolhe dia nenhum. -->
+                        <Border Margin="0,10,0,0" Padding="10,8" CornerRadius="8"
+                                BorderThickness="1" BorderBrush="{DynamicResource DropIndicatorBrush}"
+                                Visibility="{Binding HasStart, Converter={StaticResource BoolToVisibility}}">
+                            <TextBlock Text="{Binding StartText}" TextWrapping="Wrap"
+                                       Foreground="{DynamicResource TextPrimaryBrush}" />
+                        </Border>
+                    </StackPanel>
+
+                    <ScrollViewer Grid.Row="1" Style="{StaticResource WidgetScrollViewer}">
+                        <ItemsControl ItemsSource="{Binding Rows}">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate DataType="{x:Type vm:ProposalRowViewModel}">
+                                    <Grid Margin="0,3">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="Auto" />
+                                            <ColumnDefinition Width="*" />
+                                        </Grid.ColumnDefinitions>
+
+                                        <TextBlock Grid.Column="0" Text="{Binding DateText}" Width="52"
+                                                   VerticalAlignment="Center"
+                                                   Foreground="{DynamicResource TextSecondaryBrush}"
+                                                   Visibility="{Binding DataContext.IsReadOnly, RelativeSource={RelativeSource AncestorType=ItemsControl}, Converter={StaticResource BoolToVisibility}}" />
+                                        <DatePicker Grid.Column="0" Width="120" Margin="0,0,8,0"
+                                                    SelectedDate="{Binding Date}"
+                                                    Visibility="{Binding DataContext.IsAdjusting, RelativeSource={RelativeSource AncestorType=ItemsControl}, Converter={StaticResource BoolToVisibility}}" />
+
+                                        <StackPanel Grid.Column="1" Margin="10,0,0,0" VerticalAlignment="Center">
+                                            <TextBlock Text="{Binding Title}" TextWrapping="Wrap"
+                                                       Foreground="{DynamicResource TextPrimaryBrush}" />
+                                            <TextBlock Text="{Binding DetailText}" FontSize="11"
+                                                       Foreground="{DynamicResource TextMutedBrush}"
+                                                       Visibility="{Binding HasDetail, Converter={StaticResource BoolToVisibility}}" />
+                                        </StackPanel>
+                                    </Grid>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </ScrollViewer>
+
+                    <StackPanel Grid.Row="2" Margin="0,10,0,0">
+                        <TextBlock Text="{Binding MarginText}" FontSize="11"
+                                   Foreground="{DynamicResource DropIndicatorBrush}"
+                                   Visibility="{Binding HasMargin, Converter={StaticResource BoolToVisibility}}" />
+
+                        <ItemsControl ItemsSource="{Binding Conflicts}" Margin="0,6,0,0"
+                                      Visibility="{Binding HasConflicts, Converter={StaticResource BoolToVisibility}}">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate>
+                                    <TextBlock Text="{Binding}" FontSize="11" TextWrapping="Wrap" Margin="0,1"
+                                               Foreground="{DynamicResource DangerBrush}" />
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </StackPanel>
+
+                    <StackPanel Grid.Row="3" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,16,0,0">
+                        <Button Style="{StaticResource GhostButton}" Content="Cancelar" Padding="12,6"
+                                Command="{Binding CancelCommand}" />
+                        <Button Style="{StaticResource GhostButton}" Content="Ajustar" Padding="12,6" Margin="8,0,0,0"
+                                Command="{Binding AdjustCommand}"
+                                Visibility="{Binding IsReadOnly, Converter={StaticResource BoolToVisibility}}" />
+                        <Button Style="{StaticResource GhostButton}" Content="Aceitar" Padding="12,6" Margin="8,0,0,0"
+                                Foreground="{DynamicResource TextPrimaryBrush}"
+                                Command="{Binding AcceptCommand}" />
+                    </StackPanel>
+                </Grid>
+            </Border>
+        </Border>
+
+        <!-- Mudanças propostas pelo motor (V0.7) -->
+        <Border Grid.RowSpan="2"
+                Background="{DynamicResource OverlayBrush}"
+                DataContext="{Binding DailyPlan}"
+                Visibility="{Binding IsMoveProposalOpen, Converter={StaticResource BoolToVisibility}}">
+            <Border Width="460" MaxHeight="480"
+                    VerticalAlignment="Center" HorizontalAlignment="Center"
+                    Padding="20" CornerRadius="12"
+                    Background="{DynamicResource FieldBackgroundBrush}"
+                    BorderBrush="{DynamicResource FieldBorderBrush}" BorderThickness="1">
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="*" />
+                        <RowDefinition Height="Auto" />
+                    </Grid.RowDefinitions>
+
+                    <TextBlock Grid.Row="0" Text="{Binding MoveProposalHeader}" FontWeight="SemiBold" FontSize="14"
+                               TextWrapping="Wrap" Margin="0,0,0,12"
+                               Foreground="{DynamicResource TextPrimaryBrush}" />
+
+                    <ScrollViewer Grid.Row="1" Style="{StaticResource WidgetScrollViewer}">
+                        <ItemsControl ItemsSource="{Binding Moves}">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate DataType="{x:Type vm:MoveViewModel}">
+                                    <Grid Margin="0,4">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="110" />
+                                            <ColumnDefinition Width="*" />
+                                        </Grid.ColumnDefinitions>
+                                        <TextBlock Grid.Column="0" Text="{Binding Text}" VerticalAlignment="Center"
+                                                   Foreground="{DynamicResource TextSecondaryBrush}" />
+                                        <StackPanel Grid.Column="1">
+                                            <TextBlock Text="{Binding Title}" TextWrapping="Wrap"
+                                                       Foreground="{DynamicResource TextPrimaryBrush}" />
+                                            <TextBlock Text="{Binding Reason}" FontSize="11" TextWrapping="Wrap"
+                                                       Foreground="{DynamicResource TextMutedBrush}" />
+                                        </StackPanel>
+                                    </Grid>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </ScrollViewer>
+
+                    <StackPanel Grid.Row="2" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,16,0,0">
+                        <Button Style="{StaticResource GhostButton}" Content="Manter como está" Padding="12,6"
+                                Command="{Binding CancelMovesCommand}" />
+                        <Button Style="{StaticResource GhostButton}" Content="Aplicar" Padding="12,6" Margin="8,0,0,0"
+                                Foreground="{DynamicResource TextPrimaryBrush}"
+                                Command="{Binding AcceptMovesCommand}" />
+                    </StackPanel>
+                </Grid>
+            </Border>
+        </Border>
+
+        <!-- Mover uma tarefa existente para um projeto ou entrega (V0.5) -->
+        <Border Grid.RowSpan="2"
+                Background="{DynamicResource OverlayBrush}"
+                Visibility="{Binding IsMovePickerOpen, Converter={StaticResource BoolToVisibility}}">
+            <Border Width="360" MaxHeight="440"
+                    VerticalAlignment="Center" HorizontalAlignment="Center"
+                    Padding="20" CornerRadius="12"
+                    Background="{DynamicResource FieldBackgroundBrush}"
+                    BorderBrush="{DynamicResource FieldBorderBrush}" BorderThickness="1">
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="*" />
+                        <RowDefinition Height="Auto" />
+                    </Grid.RowDefinitions>
+
+                    <StackPanel Grid.Row="0" Margin="0,0,0,12">
+                        <TextBlock Text="Mover para" FontWeight="SemiBold" FontSize="15"
+                                   Foreground="{DynamicResource TextPrimaryBrush}" />
+                        <TextBlock Text="Texto, conclusão, datas e ordem continuam como estão."
+                                   Margin="0,2,0,0" FontSize="11" TextWrapping="Wrap"
+                                   Foreground="{DynamicResource TextSecondaryBrush}" />
+                    </StackPanel>
+
+                    <ScrollViewer Grid.Row="1" Style="{StaticResource WidgetScrollViewer}">
+                        <ItemsControl ItemsSource="{Binding MoveTargets}">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate>
+                                    <Button Style="{StaticResource GhostButton}" HorizontalAlignment="Stretch"
+                                            HorizontalContentAlignment="Left" Padding="10,6" Margin="0,1"
+                                            Click="MoveTarget_Click">
+                                        <StackPanel>
+                                            <TextBlock Text="{Binding Title}" TextWrapping="Wrap"
+                                                       Foreground="{DynamicResource TextPrimaryBrush}" />
+                                            <TextBlock Text="{Binding KindLabel}" FontSize="10"
+                                                       Foreground="{DynamicResource TextMutedBrush}" />
+                                        </StackPanel>
+                                    </Button>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </ScrollViewer>
+
+                    <Button Grid.Row="2" Style="{StaticResource GhostButton}" Content="Cancelar" Padding="12,6"
+                            HorizontalAlignment="Right" Margin="0,14,0,0"
+                            Command="{Binding CancelMoveCommand}" />
+                </Grid>
+            </Border>
+        </Border>
+
+        <!-- Confirmação de exclusão -->
+        <Border Grid.RowSpan="2"
+                Background="{DynamicResource OverlayBrush}"
+                Visibility="{Binding IsDeleteConfirmationVisible, Converter={StaticResource BoolToVisibility}}">
+            <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center">
+                <TextBlock Text="Excluir esta tarefa?" HorizontalAlignment="Center" FontWeight="SemiBold"
+                           Foreground="{DynamicResource TextPrimaryBrush}" />
+                <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" Margin="0,14,0,0">
+                    <Button Style="{StaticResource GhostButton}" Content="Excluir" Padding="12,5"
+                            Foreground="{DynamicResource DangerBrush}" Command="{Binding ConfirmDeleteCommand}" />
+                    <Button Style="{StaticResource GhostButton}" Content="Cancelar" Padding="12,5" Margin="8,0,0,0"
+                            Command="{Binding CancelDeleteCommand}" />
+                </StackPanel>
+            </StackPanel>
+        </Border>
+    </Grid>
+</Window>

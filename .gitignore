@@ -1,0 +1,28 @@
+# Saída de compilação e publicação — 590 MB que se refazem com `dotnet build`.
+bin/
+obj/
+publish/
+
+# Resultados de teste.
+TestResults/
+[Tt]est[Rr]esult*/
+
+# Preferências locais do Visual Studio / Rider / VS Code.
+.vs/
+.idea/
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+
+# Banco, logs e backups do aplicativo. Eles moram em %LOCALAPPDATA%\HojeWidget,
+# nunca aqui dentro — a linha existe para o caso de alguém copiar um para cá.
+*.db
+*.db-shm
+*.db-wal
+*.db.antes-*
+*.log
+
+# Lixo do Windows e do OneDrive.
+Thumbs.db
+desktop.ini

@@ -1,0 +1,27 @@
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 17
+VisualStudioVersion = 17.0.31903.59
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "HojeWidget", "src\HojeWidget\HojeWidget.csproj", "{4C1B2A70-3E85-4F1A-9C55-2A1D0E8B1101}"
+EndProject
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "HojeWidget.Tests", "tests\HojeWidget.Tests\HojeWidget.Tests.csproj", "{7F2D6B31-1A44-4C0E-9F27-55B3C9A70202}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{4C1B2A70-3E85-4F1A-9C55-2A1D0E8B1101}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{4C1B2A70-3E85-4F1A-9C55-2A1D0E8B1101}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{4C1B2A70-3E85-4F1A-9C55-2A1D0E8B1101}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{4C1B2A70-3E85-4F1A-9C55-2A1D0E8B1101}.Release|Any CPU.Build.0 = Release|Any CPU
+		{7F2D6B31-1A44-4C0E-9F27-55B3C9A70202}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{7F2D6B31-1A44-4C0E-9F27-55B3C9A70202}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{7F2D6B31-1A44-4C0E-9F27-55B3C9A70202}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{7F2D6B31-1A44-4C0E-9F27-55B3C9A70202}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+EndGlobal
