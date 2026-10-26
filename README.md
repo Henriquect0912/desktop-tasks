@@ -9,7 +9,9 @@ diferentes:
   quero fazer hoje, nesta semana e algum dia?"*. É planejamento: tarefas,
   projetos, entregas, provas, rotinas, capacidade e o plano do dia.
 
-Dados 100% locais em SQLite, sem conta, sem rede, sem telemetria.
+Dados 100% locais em SQLite, sem conta, sem rede, sem telemetria. (O atalho
+para o Claude só pede ao Windows para abrir um endereço no navegador; o
+aplicativo em si não acessa a rede.)
 
 ## O que cada versão acrescentou
 
@@ -33,7 +35,7 @@ apareceram no uso real — dependências entre conteúdos que o planejador ignor
 e a capacidade geral do dia sendo confundida com o quanto dá para estudar de uma
 matéria só.
 
-Depois dela, dois ajustes pedidos no uso do dia a dia mudaram regras que as
+Depois dela, ajustes pedidos no uso do dia a dia mudaram regras que as
 especificações tinham fixado. Estão registrados aqui porque contrariam o texto
 delas de propósito:
 
@@ -43,6 +45,8 @@ delas de propósito:
 | V0.7.1 §19–20: item com pré-requisito pendente ficava fora do plano | ele é planejado normalmente, só nunca antes do que vem antes dele | a dependência era para **ordenar**, não para trancar |
 | V0.7.1 §30: o plano de estudo começava hoje e antecipava | ele começa o mais tarde possível ainda no ritmo confortável | ninguém começa hoje a estudar para uma prova daqui a dois meses |
 | V0.5 §4: a distribuição de projetos e entregas antecipava | ela encosta o trabalho no prazo e anuncia a data-limite para começar | é a mesma regra da prova; não fazia sentido valer só para um lado |
+| V0.2 §11: o widget mostrava apenas o que é de hoje | o terço de baixo mostra os **lembretes** — as tarefas sem data | o que não tem dia precisava ficar à vista, e não escondido no aplicativo |
+| V0.1 §17: nada de inteligência artificial nem integração com outro serviço; V0.2 §9: o `+` tinha duas opções | o `+` ganhou **Pedir ideias ao Claude ↗**, que abre uma conversa nova no navegador | um lugar à mão para pedir ideias do que aprender. O aplicativo continua sem acessar a rede: quem abre o endereço é o Windows, e nada do aplicativo vai junto |
 
 Os conceitos de data são independentes e não se confundem:
 
@@ -118,15 +122,49 @@ avisa a instância existente e fecha.
 
 ### 2.3 O widget — execução do dia
 
-O widget mostra **só o que é para hoje**: tarefas planejadas para hoje, tarefas
-planejadas para dias anteriores e ainda pendentes, ocorrências de rotina do dia,
-e o que você concluiu hoje. Tarefas futuras e de "Algum dia" não aparecem aqui —
-elas vivem no aplicativo principal.
+O widget tem duas listas, separadas por uma linha fina:
 
-- `+` no canto superior direito abre duas opções:
+```text
+HOJE                               +     ┐
+○ ↻ Academia                             │ dois terços
+○ Fazer relatório                        │
+──────────────────────────────────       ┘
+LEMBRETES                          +     ┐ um terço
+○ Renovar passaporte                     ┘
+1 pendente · 1 lembrete
+```
+
+**Hoje**, nos dois terços de cima, é o que é para hoje: tarefas planejadas para
+hoje, pendências de dias anteriores, ocorrências de rotina e sessões de estudo
+do dia, e o que você concluiu hoje. Tarefas planejadas para outros dias não
+aparecem aqui — elas vivem no aplicativo principal.
+
+**Lembretes**, no terço de baixo, é o que você tem de fazer mas não tem dia:
+"renovar o passaporte", "comprar pilha". São as mesmas tarefas da seção
+**Algum dia** do aplicativo principal — um conceito só, duas vistas. Criar um
+lembrete no widget faz ele aparecer em Algum dia, e vice-versa.
+
+- O `+` de `LEMBRETES` troca o título por um campo. `Enter` salva e deixa o
+  campo aberto para o próximo; `Esc` fecha. O lembrete nasce sem data.
+- A bolinha, o `⋯ → Editar / Excluir` e o riscado até a virada do dia funcionam
+  como em Hoje. Lembretes não se reordenam por arrasto.
+- Riscar um lembrete **não** conta como "Tudo concluído por hoje": ele nunca foi
+  de hoje.
+- Um lembrete não é trazido para hoje na virada do dia — ele nunca ficou para
+  trás, porque nunca teve dia. Para fazê-lo num dia, dê uma data a ele no
+  aplicativo.
+- Etapas de projeto sem data não viram lembrete: elas já têm lugar no projeto.
+- O rodapé conta os dois: `1 pendente · 2 lembretes`. Sem lembrete pendente, ele
+  fica como sempre foi.
+
+- `+` no canto superior direito abre três opções:
   - **Adicionar para hoje** — campo dentro do próprio widget, `Enter` salva,
     `Esc` cancela. A tarefa nasce planejada para hoje.
   - **Abrir aplicativo** — abre a janela de planejamento.
+  - **Pedir ideias ao Claude ↗** — abre `https://claude.ai/new`, uma conversa
+    nova, no navegador padrão. A seta avisa que sai do aplicativo. O endereço é
+    sempre o mesmo e não leva nada junto: nenhuma tarefa, prova ou texto seu vai
+    para o Claude sem que você mesmo escreva lá.
 - Clique na bolinha para concluir. A tarefa fica riscada, atenuada e vai para o
   fim da lista. Clicar de novo no mesmo dia devolve a tarefa ao lugar de antes.
 - Passe o mouse sobre uma tarefa e clique em `⋯` para `Editar` ou `Excluir`.
@@ -365,6 +403,17 @@ Comece em 14/09. Esse é o limite: começando depois disso, o cronograma aperta.
 
 É literalmente isso: um dia depois dessa data, o mesmo conteúdo já não cabe na
 meta confortável e começa a empurrar os dias para o máximo diário.
+
+A janela não sai só da conta dos minutos. Ela começa por essa conta e **recua um
+dia por vez** até o plano caber de verdade, porque a conta ignora três coisas:
+uma sessão tem tamanho máximo, a sobra de meia hora de um dia não comporta uma
+sessão inteira, e um item só começa depois daquilo de que depende. Quando nem a
+janela inteira cabe no ritmo confortável, o plano sobe para o máximo diário — e,
+mesmo assim, continua começando o mais tarde que ainda cabe.
+
+Um item que não pode ser dividido e é maior que o máximo por sessão não cabe em
+janela nenhuma: ele aparece como conflito e não arrasta o resto do plano para
+hoje.
 
 Você **não escolhe data nenhuma**. As datas aparecem só como texto; se quiser
 mexer numa delas, `Ajustar datas` libera os campos.
@@ -748,6 +797,16 @@ código nos dois modos.
   deslocamento a partir da origem da área útil do monitor de destino, em DIPs
   daquele monitor. Guardar coordenadas absolutas da área virtual misturaria
   telas com escalas diferentes.
+- **O campo de lembrete fica no lugar do título, e não no fim da lista.** Na
+  altura padrão, o terço de baixo tem uns 50 px de lista — menos que campo e
+  linha juntos. Com o campo no fim da lista, o lembrete recém-criado nunca
+  aparecia ao lado dele. No título, a lista fica inteira e rola até o novo.
+- **Teste que processa a fila do WPF não pode criar o `App` na própria thread.**
+  O construtor de um `Application` agenda o `OnStartup` na fila da thread que o
+  cria. Processar essa fila roda a inicialização de verdade: abre o banco real e,
+  com o widget aberto, avisa a instância em execução e se desliga — levando junto
+  a janela do teste. `ReminderScrollTests` cria o `App` numa thread que nunca
+  processa a fila.
 - **`sort_order` é uma sequência global.** Concluir uma tarefa não altera o
   `sort_order`; é ele que devolve a tarefa à posição manual anterior quando ela
   é desmarcada. Reordenar redistribui entre as pendentes as mesmas posições que
@@ -841,7 +900,7 @@ src/HojeWidget/
     MainWindow.xaml            o widget
     MainAppWindow.xaml         o aplicativo principal
   Themes/                      Black.xaml, Translucent.xaml, Controls.xaml
-tests/HojeWidget.Tests/        292 testes xUnit
+tests/HojeWidget.Tests/        316 testes xUnit
 ```
 
 ### 4.2 Esquema do banco
@@ -919,10 +978,10 @@ Todas as consultas são parametrizadas; alterações de ordenação rodam em tra
 
 ## 5. Testes
 
-### 5.1 Automatizados — 292 testes, todos passando
+### 5.1 Automatizados — 316 testes, todos passando
 
 ```text
-Aprovado! – Com falha: 0, Aprovado: 292, Ignorado: 0, Total: 292
+Aprovado! – Com falha: 0, Aprovado: 316, Ignorado: 0, Total: 316
 ```
 
 **V0.1** — validação e normalização de título; criação, edição, conclusão e
@@ -1009,6 +1068,21 @@ ocorrência de rotina que não é arrastada; sessão de estudo atrasada que vem
 junto; marca de escolha manual preservada; contagem do aviso do dia que só vale
 para hoje; rodar duas vezes sem mudar nada na segunda.
 
+**Atalho para o Claude** — a opção fecha o menu e só pede para abrir, sem criar
+nada no widget; o endereço é `https` em `claude.ai/new` e não carrega parâmetro
+nenhum; o teste de desenho confere que a opção aparece inteira no menu. Abrir o
+navegador de verdade não é testado: seria abrir uma aba em quem roda os testes.
+
+**Lembretes** — lembrete nascendo sem data e fora de Hoje; campo que fica aberto
+para o próximo; texto vazio que não cria nada; riscar lembrete sem virar "Tudo
+concluído por hoje"; concluído saindo na virada do dia; pendente que não é
+trazido para hoje; as mesmas tarefas de Algum dia; etapa de projeto que não vira
+lembrete; o rodapé com as duas contagens; abrir um campo fechando o outro;
+editar e excluir; editar numa lista fechando a edição da outra; e, numa janela
+mostrada de verdade, o lembrete recém-criado visível depois do `Enter` mesmo com
+a lista cheia, e nenhuma barra de rolagem sobrando na lista vazia. O teste de
+desenho mede que os lembretes começam depois de dois terços da altura.
+
 **Data-limite para começar (entregas)** — a entrega distante que não começa hoje;
 as etapas encostando no prazo sem inverter a ordem; um dia depois do limite já
 não cabendo; sessões escolhidas de trás para frente mas numeradas na ordem do
@@ -1016,7 +1090,11 @@ calendário; dia fechado recuando o início; item indivisível pegando o dia mai
 tarde que o comporta; duração desconhecida também encostando; plano vazio que não
 recomenda dia nenhum; e a tela anunciando a data-limite com as datas em leitura.
 
-**Data-limite para começar (provas)** — prova distante que não começa hoje; a conta de
+**Data-limite para começar (provas)** — a prova MTM-25 real (três aulas e uma
+lista que depende delas, prova daqui a três semanas) começando em 09/11 e
+terminando encostada na margem, e não em 31/10; começar um dia depois do limite
+realmente passando da meta confortável; um item indivisível impossível que vira
+conflito sem puxar o plano para hoje; prova distante que não começa hoje; a conta de
 dois dias de conteúdo no ritmo confortável, com a margem no lugar certo; um dia
 depois do limite já estourando a meta; prova próxima que começa hoje mesmo; dia
 de descanso que não entra na conta; o que já está tomado no dia encurtando a
@@ -1098,6 +1176,9 @@ sem mudar o hardware. Vale conferir no primeiro dia de uso:
 - [ ] Ver a lista nascer bloqueada pela teoria, e desmarcar a caixa antes de criar.
 - [ ] Marcar a teoria como concluída e ver a lista deixar de aparecer como "depois de".
 - [ ] Deixar algo pendente de ontem e conferir que ele veio para hoje sozinho.
+- [ ] Criar lembretes pelo `+` de `LEMBRETES` e vê-los em Algum dia, no app.
+- [ ] `+ → Pedir ideias ao Claude` abrindo uma conversa nova no navegador.
+- [ ] Redimensionar o widget e ver a divisão dois terços / um terço acompanhar.
 - [ ] Tentar criar um ciclo de dependências e ler a recusa.
 - [ ] `Gerar plano de estudo` numa prova distante e conferir a data-limite.
 - [ ] `Ajustar datas` liberando os campos, e `Aceitar` gravando o plano.

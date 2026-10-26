@@ -26,6 +26,9 @@ public sealed class MainViewModel : ObservableObject
     private string _reviewSummary = "Revise suas tarefas de hoje.";
     private TaskItemViewModel? _deleteCandidate;
     private string _currentLocalDate;
+    private bool _isAddingReminder;
+    private string _newReminderText = string.Empty;
+    private string _footerText = PendingCounter.Format(0);
 
     public MainViewModel(
         TaskListService tasks,
@@ -46,6 +49,7 @@ public sealed class MainViewModel : ObservableObject
         ToggleAddMenuCommand = new RelayCommand(ToggleAddMenu);
         BeginAddCommand = new RelayCommand(BeginAdd);
         OpenMainAppCommand = new RelayCommand(OpenMainApp);
+        OpenClaudeChatCommand = new RelayCommand(OpenClaudeChat);
         CommitAddCommand = new RelayCommand(CommitAdd);
         CancelAddCommand = new RelayCommand(CancelAdd);
         DismissReviewCommand = new RelayCommand(DismissReview);
@@ -53,15 +57,26 @@ public sealed class MainViewModel : ObservableObject
         ReviewPlanCommand = new RelayCommand(OpenDailyPlan);
         ConfirmDeleteCommand = new RelayCommand(ConfirmDelete);
         CancelDeleteCommand = new RelayCommand(CancelDelete);
+        BeginAddReminderCommand = new RelayCommand(BeginAddReminder);
 
         Reload();
     }
 
     public ObservableCollection<TaskItemViewModel> Items { get; } = new();
 
+    /// <summary>
+    /// Lembretes: as tarefas sem data planejada, no terço de baixo do widget. São
+    /// as mesmas de "Algum dia" no aplicativo principal — um conceito só, duas vistas.
+    /// </summary>
+    public ObservableCollection<TaskItemViewModel> Reminders { get; } = new();
+
+    /// <summary>As linhas das duas listas, para fechar menus e edições de uma vez.</summary>
+    public IEnumerable<TaskItemViewModel> AllRows => Items.Concat(Reminders);
+
     public RelayCommand ToggleAddMenuCommand { get; }
     public RelayCommand BeginAddCommand { get; }
     public RelayCommand OpenMainAppCommand { get; }
+    public RelayCommand OpenClaudeChatCommand { get; }
     public RelayCommand CommitAddCommand { get; }
     public RelayCommand CancelAddCommand { get; }
     public RelayCommand DismissReviewCommand { get; }
@@ -69,12 +84,16 @@ public sealed class MainViewModel : ObservableObject
     public RelayCommand ReviewPlanCommand { get; }
     public RelayCommand ConfirmDeleteCommand { get; }
     public RelayCommand CancelDeleteCommand { get; }
+    public RelayCommand BeginAddReminderCommand { get; }
 
     /// <summary>Disparado quando o campo de criacao deve receber foco.</summary>
     public event Action? AddFieldFocusRequested;
 
     /// <summary>Disparado quando o usuario pede para abrir o aplicativo principal.</summary>
     public event Action? OpenMainAppRequested;
+
+    /// <summary>Disparado quando o usuário quer abrir uma conversa com o Claude.</summary>
+    public event Action? OpenClaudeChatRequested;
 
     /// <summary>V0.7 — disparado quando o usuário quer revisar o plano do dia.</summary>
     public event Action? OpenDailyPlanRequested;
@@ -87,6 +106,34 @@ public sealed class MainViewModel : ObservableObject
         get => _pendingCountText;
         private set => SetProperty(ref _pendingCountText, value);
     }
+
+    /// <summary>Rodapé: pendentes de hoje e, quando houver, lembretes pendentes.</summary>
+    public string FooterText
+    {
+        get => _footerText;
+        private set => SetProperty(ref _footerText, value);
+    }
+
+    public bool IsAddingReminder
+    {
+        get => _isAddingReminder;
+        private set
+        {
+            if (SetProperty(ref _isAddingReminder, value))
+            {
+                OnPropertyChanged(nameof(IsRemindersEmpty));
+            }
+        }
+    }
+
+    public string NewReminderText
+    {
+        get => _newReminderText;
+        set => SetProperty(ref _newReminderText, value);
+    }
+
+    /// <summary>Nada para lembrar — e o campo de criação não está aberto.</summary>
+    public bool IsRemindersEmpty => Reminders.Count == 0 && !_isAddingReminder;
 
     public ListState State
     {
@@ -111,7 +158,7 @@ public sealed class MainViewModel : ObservableObject
         private set => SetProperty(ref _isAdding, value);
     }
 
-    /// <summary>Menu do botão "+": adicionar para hoje ou abrir o aplicativo.</summary>
+    /// <summary>Menu do botão "+": adicionar para hoje, abrir o aplicativo ou o Claude.</summary>
     public bool IsAddMenuOpen
     {
         get => _isAddMenuOpen;
@@ -199,6 +246,36 @@ public sealed class MainViewModel : ObservableObject
         State = pending.Count > 0
             ? ListState.Normal
             : completed.Count > 0 ? ListState.AllDone : ListState.Empty;
+
+        var reminders = ReloadReminders(snapshot.Today);
+        FooterText = PendingCounter.WithReminders(pending.Count, reminders);
+    }
+
+    /// <summary>Recarrega os lembretes. Retorna quantos estão pendentes.</summary>
+    private int ReloadReminders(DateOnly today)
+    {
+        var someday = _tasks.GetSomeday();
+        var existing = Reminders.ToDictionary(i => i.Id, StringComparer.Ordinal);
+
+        Reminders.Clear();
+        foreach (var task in someday.Pending.Concat(someday.CompletedToday))
+        {
+            var entry = DayEntry.FromTask(task);
+            var subtitle = BuildSubtitle(entry, today);
+
+            if (existing.TryGetValue(task.Id, out var vm))
+            {
+                vm.UpdateFrom(entry, subtitle);
+                Reminders.Add(vm);
+            }
+            else
+            {
+                Reminders.Add(new TaskItemViewModel(entry, subtitle));
+            }
+        }
+
+        OnPropertyChanged(nameof(IsRemindersEmpty));
+        return someday.Pending.Count;
     }
 
     /// <summary>
@@ -231,15 +308,56 @@ public sealed class MainViewModel : ObservableObject
     public void BeginAdd()
     {
         IsAddMenuOpen = false;
+        CancelAddReminder();
         NewTaskText = string.Empty;
         IsAdding = true;
         AddFieldFocusRequested?.Invoke();
+    }
+
+    /// <summary>Abre o campo de criação dos lembretes. O lembrete nasce sem data.</summary>
+    public void BeginAddReminder()
+    {
+        IsAddMenuOpen = false;
+        CancelAdd();
+        NewReminderText = string.Empty;
+        IsAddingReminder = true;
+    }
+
+    /// <summary>
+    /// Cria o lembrete e deixa o campo aberto para o próximo, como no campo de
+    /// Hoje. Texto vazio não cria nada.
+    /// </summary>
+    public void CommitAddReminder()
+    {
+        var created = _tasks.Add(NewReminderText, plannedDate: null);
+        NewReminderText = string.Empty;
+
+        if (created is not null)
+        {
+            Reload();
+        }
+    }
+
+    public void CancelAddReminder()
+    {
+        NewReminderText = string.Empty;
+        IsAddingReminder = false;
     }
 
     public void OpenMainApp()
     {
         IsAddMenuOpen = false;
         OpenMainAppRequested?.Invoke();
+    }
+
+    /// <summary>
+    /// Pede para abrir uma conversa nova com o Claude. Quem abre é o controlador,
+    /// pelo navegador: o widget não sabe nada de processos nem de endereços.
+    /// </summary>
+    public void OpenClaudeChat()
+    {
+        IsAddMenuOpen = false;
+        OpenClaudeChatRequested?.Invoke();
     }
 
     public void CommitAdd()
@@ -289,7 +407,7 @@ public sealed class MainViewModel : ObservableObject
 
     public void BeginEdit(TaskItemViewModel item)
     {
-        foreach (var other in Items)
+        foreach (var other in AllRows)
         {
             other.IsEditing = false;
             other.IsMenuOpen = false;

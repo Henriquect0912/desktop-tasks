@@ -21,6 +21,132 @@
         FontSize="13"
         Foreground="{DynamicResource TextPrimaryBrush}">
 
+    <Window.Resources>
+        <!-- Uma linha de tarefa. Usada por Hoje e pelos lembretes. -->
+        <DataTemplate x:Key="WidgetRowTemplate" DataType="{x:Type vm:TaskItemViewModel}">
+            <Grid Background="Transparent">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                </Grid.RowDefinitions>
+
+                <!-- Marcador de insercao acima -->
+                <Border Grid.Row="0"
+                        Height="2"
+                        Margin="8,1"
+                        CornerRadius="1"
+                        Background="{DynamicResource DropIndicatorBrush}"
+                        Visibility="{Binding IsDropTargetBefore, Converter={StaticResource BoolToVisibility}}" />
+
+                <Border x:Name="RowRoot"
+                        Grid.Row="1"
+                        Padding="8,5"
+                        Margin="0,1"
+                        CornerRadius="6"
+                        Background="Transparent">
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+
+                        <CheckBox x:Name="Check"
+                                  Grid.Column="0"
+                                  Margin="0,1,8,0"
+                                  Style="{StaticResource TaskCheckBox}"
+                                  IsChecked="{Binding IsCompleted}"
+                                  Click="TaskCheckBox_Click" />
+
+                        <StackPanel x:Name="TitleBlock"
+                                    Grid.Column="1"
+                                    VerticalAlignment="Center"
+                                    Visibility="{Binding IsEditing, Converter={StaticResource InverseBoolToVisibility}}">
+                            <TextBlock x:Name="TitleText"
+                                       TextWrapping="Wrap"
+                                       Foreground="{DynamicResource TextPrimaryBrush}">
+                                <Run Text="{Binding RoutinePrefix, Mode=OneWay}" FontSize="11"
+                                     Foreground="{DynamicResource TextMutedBrush}" />
+                                <Run Text="{Binding Title, Mode=OneWay}" />
+                            </TextBlock>
+                            <TextBlock Text="{Binding Subtitle}"
+                                       Margin="0,1,0,0"
+                                       FontSize="11"
+                                       TextWrapping="Wrap"
+                                       Foreground="{DynamicResource TextMutedBrush}"
+                                       Visibility="{Binding HasSubtitle, Converter={StaticResource BoolToVisibility}}" />
+                        </StackPanel>
+
+                        <TextBox x:Name="EditBox"
+                                 Grid.Column="1"
+                                 Style="{StaticResource WidgetTextBox}"
+                                 Padding="6,3"
+                                 views:FocusBehavior.FocusOnVisible="True"
+                                 Text="{Binding EditText, UpdateSourceTrigger=PropertyChanged}"
+                                 Visibility="{Binding IsEditing, Converter={StaticResource BoolToVisibility}}"
+                                 KeyDown="EditBox_KeyDown"
+                                 LostKeyboardFocus="EditBox_LostKeyboardFocus" />
+
+                        <Button x:Name="MenuButton"
+                                Grid.Column="2"
+                                Style="{StaticResource RowMenuButton}"
+                                Content="&#x22EF;"
+                                Opacity="0"
+                                ToolTip="Mais ações"
+                                Visibility="{Binding CanEdit, Converter={StaticResource BoolToVisibility}}"
+                                Click="RowMenuButton_Click" />
+                    </Grid>
+                </Border>
+
+                <!-- Menu do item: Editar / Excluir -->
+                <StackPanel Grid.Row="2"
+                            Orientation="Horizontal"
+                            Margin="34,0,0,4"
+                            Visibility="{Binding IsMenuOpen, Converter={StaticResource BoolToVisibility}}">
+                    <Button Style="{StaticResource GhostButton}"
+                            Content="Editar"
+                            Padding="6,2"
+                            Click="EditMenuItem_Click" />
+                    <Button Style="{StaticResource GhostButton}"
+                            Content="Excluir"
+                            Padding="6,2"
+                            Margin="4,0,0,0"
+                            Foreground="{DynamicResource DangerBrush}"
+                            Click="DeleteMenuItem_Click" />
+                </StackPanel>
+
+                <!-- Marcador de insercao abaixo -->
+                <Border Grid.Row="3"
+                        Height="2"
+                        Margin="8,1"
+                        CornerRadius="1"
+                        Background="{DynamicResource DropIndicatorBrush}"
+                        Visibility="{Binding IsDropTargetAfter, Converter={StaticResource BoolToVisibility}}" />
+            </Grid>
+
+            <DataTemplate.Triggers>
+                <DataTrigger Binding="{Binding IsCompleted}" Value="True">
+                    <Setter TargetName="TitleText" Property="TextDecorations" Value="Strikethrough" />
+                    <Setter TargetName="TitleText" Property="Foreground" Value="{DynamicResource TextMutedBrush}" />
+                    <Setter TargetName="RowRoot" Property="Opacity" Value="0.62" />
+                </DataTrigger>
+                <DataTrigger Binding="{Binding IsDragging}" Value="True">
+                    <Setter TargetName="RowRoot" Property="Background" Value="{DynamicResource HoverBrush}" />
+                    <Setter TargetName="RowRoot" Property="Opacity" Value="0.75" />
+                </DataTrigger>
+                <Trigger SourceName="RowRoot" Property="IsMouseOver" Value="True">
+                    <Setter TargetName="MenuButton" Property="Opacity" Value="1" />
+                    <Setter TargetName="RowRoot" Property="Background" Value="{DynamicResource HoverBrush}" />
+                </Trigger>
+                <DataTrigger Binding="{Binding IsMenuOpen}" Value="True">
+                    <Setter TargetName="MenuButton" Property="Opacity" Value="1" />
+                </DataTrigger>
+            </DataTemplate.Triggers>
+        </DataTemplate>
+    </Window.Resources>
+
     <Grid>
         <!-- Superficie do widget -->
         <Border Background="{DynamicResource SurfaceBrush}"
@@ -28,304 +154,273 @@
                 BorderThickness="1"
                 CornerRadius="12">
             <Grid>
+                <!-- Dois terços para o que tem data, um terço para os lembretes. -->
                 <Grid.RowDefinitions>
-                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="2*" />
                     <RowDefinition Height="*" />
                     <RowDefinition Height="Auto" />
                 </Grid.RowDefinitions>
 
-                <!-- ============ Cabecalho: tambem e a alca para mover ============ -->
-                <Grid x:Name="HeaderPanel"
-                      Grid.Row="0"
-                      Background="Transparent"
-                      Margin="16,12,10,4"
-                      MouseLeftButtonDown="HeaderPanel_MouseLeftButtonDown">
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="*" />
-                        <ColumnDefinition Width="Auto" />
-                    </Grid.ColumnDefinitions>
-
-                    <TextBlock Grid.Column="0"
-                               Text="HOJE"
-                               VerticalAlignment="Center"
-                               FontSize="12"
-                               FontWeight="SemiBold"
-                               Foreground="{DynamicResource TextPrimaryBrush}" />
-
-                    <Button Grid.Column="1"
-                            Style="{StaticResource AddButton}"
-                            Content="+"
-                            ToolTip="Adicionar"
-                            Command="{Binding ToggleAddMenuCommand}" />
-                </Grid>
-
-                <!-- ============ Conteudo ============ -->
-                <Grid Grid.Row="1" Margin="0,2,0,0">
+                <!-- ============ Hoje ============ -->
+                <Grid Grid.Row="0">
                     <Grid.RowDefinitions>
-                        <RowDefinition Height="Auto" />
-                        <RowDefinition Height="Auto" />
-                        <RowDefinition Height="Auto" />
                         <RowDefinition Height="Auto" />
                         <RowDefinition Height="*" />
                     </Grid.RowDefinitions>
 
-                    <!-- Menu do botao "+" -->
-                    <Border Grid.Row="0"
-                            Margin="16,0,16,8"
-                            Padding="4"
-                            CornerRadius="8"
-                            Background="{DynamicResource FieldBackgroundBrush}"
-                            BorderBrush="{DynamicResource FieldBorderBrush}"
-                            BorderThickness="1"
-                            Visibility="{Binding IsAddMenuOpen, Converter={StaticResource BoolToVisibility}}">
-                        <StackPanel>
-                            <Button Style="{StaticResource GhostButton}"
-                                    Content="Adicionar para hoje"
-                                    HorizontalContentAlignment="Left"
-                                    HorizontalAlignment="Stretch"
-                                    Padding="8,5"
-                                    Command="{Binding BeginAddCommand}" />
-                            <Button Style="{StaticResource GhostButton}"
-                                    Content="Abrir aplicativo"
-                                    HorizontalContentAlignment="Left"
-                                    HorizontalAlignment="Stretch"
-                                    Padding="8,5"
-                                    Command="{Binding OpenMainAppCommand}" />
-                        </StackPanel>
-                    </Border>
+                    <!-- ============ Cabecalho: tambem e a alca para mover ============ -->
+                    <Grid x:Name="HeaderPanel"
+                          Grid.Row="0"
+                          Background="Transparent"
+                          Margin="16,12,10,4"
+                          MouseLeftButtonDown="HeaderPanel_MouseLeftButtonDown">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
 
-                    <!-- Aviso de revisao diaria -->
-                    <Border Grid.Row="1"
-                            Margin="16,2,16,10"
-                            Padding="12,10"
-                            CornerRadius="8"
-                            Background="{DynamicResource FieldBackgroundBrush}"
-                            BorderBrush="{DynamicResource FieldBorderBrush}"
-                            BorderThickness="1"
-                            Visibility="{Binding IsReviewVisible, Converter={StaticResource BoolToVisibility}}">
-                        <StackPanel>
-                            <TextBlock Text="Bom dia."
-                                       FontWeight="SemiBold"
-                                       Foreground="{DynamicResource TextPrimaryBrush}" />
-                            <TextBlock Text="{Binding ReviewSummary}"
-                                       Margin="0,2,0,8"
-                                       TextWrapping="Wrap"
-                                       Foreground="{DynamicResource TextSecondaryBrush}" />
-                            <StackPanel Orientation="Horizontal">
-                                <Button Style="{StaticResource GhostButton}"
-                                        Content="Revisar plano"
-                                        Padding="0,2"
-                                        Margin="0,0,16,0"
-                                        Command="{Binding ReviewPlanCommand}" />
-                                <Button Style="{StaticResource GhostButton}"
-                                        Content="Tudo certo"
-                                        Padding="0,2"
-                                        Command="{Binding DismissReviewCommand}" />
-                            </StackPanel>
-                        </StackPanel>
-                    </Border>
-
-                    <!-- Tudo concluido por hoje -->
-                    <StackPanel Grid.Row="2"
-                                Margin="16,4,16,12"
-                                Visibility="{Binding IsAllDone, Converter={StaticResource BoolToVisibility}}">
-                        <TextBlock Text="&#x2713;"
-                                   FontSize="20"
-                                   Foreground="{DynamicResource TextPrimaryBrush}" />
-                        <TextBlock Text="Tudo concluído por hoje."
-                                   Margin="0,6,0,0"
-                                   FontWeight="SemiBold"
-                                   TextWrapping="Wrap"
-                                   Foreground="{DynamicResource TextPrimaryBrush}" />
-                        <TextBlock Text="Você terminou suas tarefas."
-                                   Margin="0,2,0,0"
-                                   TextWrapping="Wrap"
-                                   Foreground="{DynamicResource TextSecondaryBrush}" />
-                        <!-- V0.7: nada de puxar trabalho de amanhã sozinho. Ver, sim; gerar, não. -->
-                        <Button Style="{StaticResource GhostButton}"
-                                Content="Ver amanhã"
-                                HorizontalAlignment="Left"
-                                Padding="0,4"
-                                Margin="0,8,0,0"
-                                Command="{Binding OpenMainAppCommand}" />
-                    </StackPanel>
-
-                    <!-- Campo de criacao, dentro do proprio widget -->
-                    <Grid Grid.Row="3"
-                          Margin="16,0,16,10"
-                          Visibility="{Binding IsAdding, Converter={StaticResource BoolToVisibility}}">
-                        <TextBox x:Name="NewTaskBox"
-                                 Style="{StaticResource WidgetTextBox}"
-                                 views:FocusBehavior.FocusOnVisible="True"
-                                 Text="{Binding NewTaskText, UpdateSourceTrigger=PropertyChanged}"
-                                 KeyDown="NewTaskBox_KeyDown" />
-                        <TextBlock Text="O que você precisa fazer?"
-                                   Margin="10,0,10,0"
+                        <TextBlock Grid.Column="0"
+                                   Text="HOJE"
                                    VerticalAlignment="Center"
-                                   IsHitTestVisible="False"
-                                   Foreground="{DynamicResource TextMutedBrush}"
-                                   Visibility="{Binding NewTaskText, Converter={StaticResource EmptyStringToVisibility}}" />
+                                   FontSize="12"
+                                   FontWeight="SemiBold"
+                                   Foreground="{DynamicResource TextPrimaryBrush}" />
+
+                        <Button Grid.Column="1"
+                                Style="{StaticResource AddButton}"
+                                Content="+"
+                                ToolTip="Adicionar"
+                                Command="{Binding ToggleAddMenuCommand}" />
                     </Grid>
 
-                    <!-- Estado vazio -->
-                    <StackPanel Grid.Row="4"
-                                Margin="16,4,16,0"
-                                VerticalAlignment="Top"
-                                Visibility="{Binding IsEmpty, Converter={StaticResource BoolToVisibility}}">
-                        <TextBlock Text="Nada por enquanto."
-                                   Foreground="{DynamicResource TextSecondaryBrush}" />
-                        <Button Style="{StaticResource GhostButton}"
-                                Content="+ Adicionar primeira tarefa"
-                                HorizontalAlignment="Left"
-                                Padding="0,4"
-                                Margin="0,10,0,0"
-                                Command="{Binding BeginAddCommand}" />
-                    </StackPanel>
+                    <!-- ============ Conteudo ============ -->
+                    <Grid Grid.Row="1" Margin="0,2,0,0">
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="*" />
+                        </Grid.RowDefinitions>
 
-                    <!-- Lista -->
-                    <ScrollViewer x:Name="ListScroll"
-                                  Grid.Row="4"
+                        <!-- Menu do botao "+" -->
+                        <Border Grid.Row="0"
+                                Margin="16,0,16,8"
+                                Padding="4"
+                                CornerRadius="8"
+                                Background="{DynamicResource FieldBackgroundBrush}"
+                                BorderBrush="{DynamicResource FieldBorderBrush}"
+                                BorderThickness="1"
+                                Visibility="{Binding IsAddMenuOpen, Converter={StaticResource BoolToVisibility}}">
+                            <StackPanel>
+                                <Button Style="{StaticResource GhostButton}"
+                                        Content="Adicionar para hoje"
+                                        HorizontalContentAlignment="Left"
+                                        HorizontalAlignment="Stretch"
+                                        Padding="8,5"
+                                        Command="{Binding BeginAddCommand}" />
+                                <Button Style="{StaticResource GhostButton}"
+                                        Content="Abrir aplicativo"
+                                        HorizontalContentAlignment="Left"
+                                        HorizontalAlignment="Stretch"
+                                        Padding="8,5"
+                                        Command="{Binding OpenMainAppCommand}" />
+                                <!-- Abre uma conversa nova no navegador; a seta diz que sai do aplicativo. -->
+                                <Button x:Name="ClaudeChatButton"
+                                        Style="{StaticResource GhostButton}"
+                                        Content="Pedir ideias ao Claude &#x2197;"
+                                        HorizontalContentAlignment="Left"
+                                        HorizontalAlignment="Stretch"
+                                        Padding="8,5"
+                                        ToolTip="Abre claude.ai no navegador"
+                                        Command="{Binding OpenClaudeChatCommand}" />
+                            </StackPanel>
+                        </Border>
+
+                        <!-- Aviso de revisao diaria -->
+                        <Border Grid.Row="1"
+                                Margin="16,2,16,10"
+                                Padding="12,10"
+                                CornerRadius="8"
+                                Background="{DynamicResource FieldBackgroundBrush}"
+                                BorderBrush="{DynamicResource FieldBorderBrush}"
+                                BorderThickness="1"
+                                Visibility="{Binding IsReviewVisible, Converter={StaticResource BoolToVisibility}}">
+                            <StackPanel>
+                                <TextBlock Text="Bom dia."
+                                           FontWeight="SemiBold"
+                                           Foreground="{DynamicResource TextPrimaryBrush}" />
+                                <TextBlock Text="{Binding ReviewSummary}"
+                                           Margin="0,2,0,8"
+                                           TextWrapping="Wrap"
+                                           Foreground="{DynamicResource TextSecondaryBrush}" />
+                                <StackPanel Orientation="Horizontal">
+                                    <Button Style="{StaticResource GhostButton}"
+                                            Content="Revisar plano"
+                                            Padding="0,2"
+                                            Margin="0,0,16,0"
+                                            Command="{Binding ReviewPlanCommand}" />
+                                    <Button Style="{StaticResource GhostButton}"
+                                            Content="Tudo certo"
+                                            Padding="0,2"
+                                            Command="{Binding DismissReviewCommand}" />
+                                </StackPanel>
+                            </StackPanel>
+                        </Border>
+
+                        <!-- Tudo concluido por hoje -->
+                        <StackPanel Grid.Row="2"
+                                    Margin="16,4,16,12"
+                                    Visibility="{Binding IsAllDone, Converter={StaticResource BoolToVisibility}}">
+                            <TextBlock Text="&#x2713;"
+                                       FontSize="20"
+                                       Foreground="{DynamicResource TextPrimaryBrush}" />
+                            <TextBlock Text="Tudo concluído por hoje."
+                                       Margin="0,6,0,0"
+                                       FontWeight="SemiBold"
+                                       TextWrapping="Wrap"
+                                       Foreground="{DynamicResource TextPrimaryBrush}" />
+                            <TextBlock Text="Você terminou suas tarefas."
+                                       Margin="0,2,0,0"
+                                       TextWrapping="Wrap"
+                                       Foreground="{DynamicResource TextSecondaryBrush}" />
+                            <!-- V0.7: nada de puxar trabalho de amanhã sozinho. Ver, sim; gerar, não. -->
+                            <Button Style="{StaticResource GhostButton}"
+                                    Content="Ver amanhã"
+                                    HorizontalAlignment="Left"
+                                    Padding="0,4"
+                                    Margin="0,8,0,0"
+                                    Command="{Binding OpenMainAppCommand}" />
+                        </StackPanel>
+
+                        <!-- Campo de criacao, dentro do proprio widget -->
+                        <Grid Grid.Row="3"
+                              Margin="16,0,16,10"
+                              Visibility="{Binding IsAdding, Converter={StaticResource BoolToVisibility}}">
+                            <TextBox x:Name="NewTaskBox"
+                                     Style="{StaticResource WidgetTextBox}"
+                                     views:FocusBehavior.FocusOnVisible="True"
+                                     Text="{Binding NewTaskText, UpdateSourceTrigger=PropertyChanged}"
+                                     KeyDown="NewTaskBox_KeyDown" />
+                            <TextBlock Text="O que você precisa fazer?"
+                                       Margin="10,0,10,0"
+                                       VerticalAlignment="Center"
+                                       IsHitTestVisible="False"
+                                       Foreground="{DynamicResource TextMutedBrush}"
+                                       Visibility="{Binding NewTaskText, Converter={StaticResource EmptyStringToVisibility}}" />
+                        </Grid>
+
+                        <!-- Estado vazio -->
+                        <StackPanel Grid.Row="4"
+                                    Margin="16,4,16,0"
+                                    VerticalAlignment="Top"
+                                    Visibility="{Binding IsEmpty, Converter={StaticResource BoolToVisibility}}">
+                            <TextBlock Text="Nada por enquanto."
+                                       Foreground="{DynamicResource TextSecondaryBrush}" />
+                            <Button Style="{StaticResource GhostButton}"
+                                    Content="+ Adicionar primeira tarefa"
+                                    HorizontalAlignment="Left"
+                                    Padding="0,4"
+                                    Margin="0,10,0,0"
+                                    Command="{Binding BeginAddCommand}" />
+                        </StackPanel>
+
+                        <!-- Lista -->
+                        <ScrollViewer x:Name="ListScroll"
+                                      Grid.Row="4"
+                                      Style="{StaticResource WidgetScrollViewer}"
+                                      Margin="8,0,6,0"
+                                      Visibility="{Binding IsEmpty, Converter={StaticResource InverseBoolToVisibility}}">
+                            <ItemsControl x:Name="TasksHost"
+                                          ItemsSource="{Binding Items}"
+                                          Padding="0,0,0,6"
+                                          PreviewMouseLeftButtonDown="TasksHost_PreviewMouseLeftButtonDown"
+                                          PreviewMouseMove="TasksHost_PreviewMouseMove"
+                                          ItemTemplate="{StaticResource WidgetRowTemplate}"
+                                          PreviewMouseLeftButtonUp="TasksHost_PreviewMouseLeftButtonUp" />
+                        </ScrollViewer>
+                    </Grid>
+                </Grid>
+
+                <!-- ============ Lembretes: o que não tem data ============ -->
+                <Grid Grid.Row="1">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="*" />
+                    </Grid.RowDefinitions>
+
+                    <!-- A divisão pequena entre as duas listas -->
+                    <Border Grid.Row="0"
+                            Height="1"
+                            Margin="16,0,16,0"
+                            VerticalAlignment="Top"
+                            Background="{DynamicResource SurfaceBorderBrush}" />
+
+                    <Grid Grid.Row="0" Margin="16,8,10,2">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+
+                        <TextBlock Grid.Column="0"
+                                   Text="LEMBRETES"
+                                   VerticalAlignment="Center"
+                                   FontSize="12"
+                                   FontWeight="SemiBold"
+                                   Foreground="{DynamicResource TextPrimaryBrush}"
+                                   Visibility="{Binding IsAddingReminder, Converter={StaticResource InverseBoolToVisibility}}" />
+
+                        <!-- Campo de criacao no lugar do titulo: o terco de baixo e pequeno
+                             demais para campo e lista juntos, entao a lista fica inteira
+                             e o lembrete recem-criado aparece nela. -->
+                        <Grid Grid.Column="0"
+                              Margin="0,0,6,0"
+                              Visibility="{Binding IsAddingReminder, Converter={StaticResource BoolToVisibility}}">
+                            <TextBox x:Name="NewReminderBox"
+                                     Style="{StaticResource WidgetTextBox}"
+                                     Padding="6,3"
+                                     views:FocusBehavior.FocusOnVisible="True"
+                                     Text="{Binding NewReminderText, UpdateSourceTrigger=PropertyChanged}"
+                                     KeyDown="NewReminderBox_KeyDown" />
+                            <TextBlock Text="Do que você quer se lembrar?"
+                                       Margin="9,0,9,0"
+                                       VerticalAlignment="Center"
+                                       IsHitTestVisible="False"
+                                       Foreground="{DynamicResource TextMutedBrush}"
+                                       Visibility="{Binding NewReminderText, Converter={StaticResource EmptyStringToVisibility}}" />
+                        </Grid>
+
+                        <Button x:Name="AddReminderButton"
+                                Grid.Column="1"
+                                Style="{StaticResource AddButton}"
+                                Content="+"
+                                ToolTip="Adicionar lembrete"
+                                Command="{Binding BeginAddReminderCommand}" />
+                    </Grid>
+
+                    <TextBlock Grid.Row="1"
+                               Margin="16,2,16,0"
+                               VerticalAlignment="Top"
+                               Text="Nada para lembrar."
+                               FontSize="12"
+                               Foreground="{DynamicResource TextMutedBrush}"
+                               Visibility="{Binding IsRemindersEmpty, Converter={StaticResource BoolToVisibility}}" />
+
+                    <ScrollViewer x:Name="RemindersScroll"
+                                  Grid.Row="1"
                                   Style="{StaticResource WidgetScrollViewer}"
-                                  Margin="8,0,6,0"
-                                  Visibility="{Binding IsEmpty, Converter={StaticResource InverseBoolToVisibility}}">
-                        <ItemsControl x:Name="TasksHost"
-                                      ItemsSource="{Binding Items}"
-                                      Padding="0,0,0,6"
-                                      PreviewMouseLeftButtonDown="TasksHost_PreviewMouseLeftButtonDown"
-                                      PreviewMouseMove="TasksHost_PreviewMouseMove"
-                                      PreviewMouseLeftButtonUp="TasksHost_PreviewMouseLeftButtonUp">
-                            <ItemsControl.ItemTemplate>
-                                <DataTemplate DataType="{x:Type vm:TaskItemViewModel}">
-                                    <Grid Background="Transparent">
-                                        <Grid.RowDefinitions>
-                                            <RowDefinition Height="Auto" />
-                                            <RowDefinition Height="Auto" />
-                                            <RowDefinition Height="Auto" />
-                                            <RowDefinition Height="Auto" />
-                                        </Grid.RowDefinitions>
-
-                                        <!-- Marcador de insercao acima -->
-                                        <Border Grid.Row="0"
-                                                Height="2"
-                                                Margin="8,1"
-                                                CornerRadius="1"
-                                                Background="{DynamicResource DropIndicatorBrush}"
-                                                Visibility="{Binding IsDropTargetBefore, Converter={StaticResource BoolToVisibility}}" />
-
-                                        <Border x:Name="RowRoot"
-                                                Grid.Row="1"
-                                                Padding="8,5"
-                                                Margin="0,1"
-                                                CornerRadius="6"
-                                                Background="Transparent">
-                                            <Grid>
-                                                <Grid.ColumnDefinitions>
-                                                    <ColumnDefinition Width="Auto" />
-                                                    <ColumnDefinition Width="*" />
-                                                    <ColumnDefinition Width="Auto" />
-                                                </Grid.ColumnDefinitions>
-
-                                                <CheckBox x:Name="Check"
-                                                          Grid.Column="0"
-                                                          Margin="0,1,8,0"
-                                                          Style="{StaticResource TaskCheckBox}"
-                                                          IsChecked="{Binding IsCompleted}"
-                                                          Click="TaskCheckBox_Click" />
-
-                                                <StackPanel x:Name="TitleBlock"
-                                                            Grid.Column="1"
-                                                            VerticalAlignment="Center"
-                                                            Visibility="{Binding IsEditing, Converter={StaticResource InverseBoolToVisibility}}">
-                                                    <TextBlock x:Name="TitleText"
-                                                               TextWrapping="Wrap"
-                                                               Foreground="{DynamicResource TextPrimaryBrush}">
-                                                        <Run Text="{Binding RoutinePrefix, Mode=OneWay}" FontSize="11"
-                                                             Foreground="{DynamicResource TextMutedBrush}" />
-                                                        <Run Text="{Binding Title, Mode=OneWay}" />
-                                                    </TextBlock>
-                                                    <TextBlock Text="{Binding Subtitle}"
-                                                               Margin="0,1,0,0"
-                                                               FontSize="11"
-                                                               TextWrapping="Wrap"
-                                                               Foreground="{DynamicResource TextMutedBrush}"
-                                                               Visibility="{Binding HasSubtitle, Converter={StaticResource BoolToVisibility}}" />
-                                                </StackPanel>
-
-                                                <TextBox x:Name="EditBox"
-                                                         Grid.Column="1"
-                                                         Style="{StaticResource WidgetTextBox}"
-                                                         Padding="6,3"
-                                                         views:FocusBehavior.FocusOnVisible="True"
-                                                         Text="{Binding EditText, UpdateSourceTrigger=PropertyChanged}"
-                                                         Visibility="{Binding IsEditing, Converter={StaticResource BoolToVisibility}}"
-                                                         KeyDown="EditBox_KeyDown"
-                                                         LostKeyboardFocus="EditBox_LostKeyboardFocus" />
-
-                                                <Button x:Name="MenuButton"
-                                                        Grid.Column="2"
-                                                        Style="{StaticResource RowMenuButton}"
-                                                        Content="&#x22EF;"
-                                                        Opacity="0"
-                                                        ToolTip="Mais ações"
-                                                        Visibility="{Binding CanEdit, Converter={StaticResource BoolToVisibility}}"
-                                                        Click="RowMenuButton_Click" />
-                                            </Grid>
-                                        </Border>
-
-                                        <!-- Menu do item: Editar / Excluir -->
-                                        <StackPanel Grid.Row="2"
-                                                    Orientation="Horizontal"
-                                                    Margin="34,0,0,4"
-                                                    Visibility="{Binding IsMenuOpen, Converter={StaticResource BoolToVisibility}}">
-                                            <Button Style="{StaticResource GhostButton}"
-                                                    Content="Editar"
-                                                    Padding="6,2"
-                                                    Click="EditMenuItem_Click" />
-                                            <Button Style="{StaticResource GhostButton}"
-                                                    Content="Excluir"
-                                                    Padding="6,2"
-                                                    Margin="4,0,0,0"
-                                                    Foreground="{DynamicResource DangerBrush}"
-                                                    Click="DeleteMenuItem_Click" />
-                                        </StackPanel>
-
-                                        <!-- Marcador de insercao abaixo -->
-                                        <Border Grid.Row="3"
-                                                Height="2"
-                                                Margin="8,1"
-                                                CornerRadius="1"
-                                                Background="{DynamicResource DropIndicatorBrush}"
-                                                Visibility="{Binding IsDropTargetAfter, Converter={StaticResource BoolToVisibility}}" />
-                                    </Grid>
-
-                                    <DataTemplate.Triggers>
-                                        <DataTrigger Binding="{Binding IsCompleted}" Value="True">
-                                            <Setter TargetName="TitleText" Property="TextDecorations" Value="Strikethrough" />
-                                            <Setter TargetName="TitleText" Property="Foreground" Value="{DynamicResource TextMutedBrush}" />
-                                            <Setter TargetName="RowRoot" Property="Opacity" Value="0.62" />
-                                        </DataTrigger>
-                                        <DataTrigger Binding="{Binding IsDragging}" Value="True">
-                                            <Setter TargetName="RowRoot" Property="Background" Value="{DynamicResource HoverBrush}" />
-                                            <Setter TargetName="RowRoot" Property="Opacity" Value="0.75" />
-                                        </DataTrigger>
-                                        <Trigger SourceName="RowRoot" Property="IsMouseOver" Value="True">
-                                            <Setter TargetName="MenuButton" Property="Opacity" Value="1" />
-                                            <Setter TargetName="RowRoot" Property="Background" Value="{DynamicResource HoverBrush}" />
-                                        </Trigger>
-                                        <DataTrigger Binding="{Binding IsMenuOpen}" Value="True">
-                                            <Setter TargetName="MenuButton" Property="Opacity" Value="1" />
-                                        </DataTrigger>
-                                    </DataTemplate.Triggers>
-                                </DataTemplate>
-                            </ItemsControl.ItemTemplate>
-                        </ItemsControl>
+                                  Margin="8,0,6,0">
+                        <ItemsControl x:Name="RemindersHost"
+                                      ItemsSource="{Binding Reminders}"
+                                      ItemTemplate="{StaticResource WidgetRowTemplate}"
+                                      PreviewMouseLeftButtonDown="RemindersHost_PreviewMouseLeftButtonDown" />
                     </ScrollViewer>
                 </Grid>
 
                 <!-- ============ Rodape ============ -->
                 <TextBlock Grid.Row="2"
                            Margin="16,6,16,12"
-                           Text="{Binding PendingCountText}"
+                           Text="{Binding FooterText}"
                            FontSize="12"
                            Foreground="{DynamicResource TextSecondaryBrush}" />
             </Grid>

@@ -20,6 +20,10 @@ public static class TaskArranger
     /// <summary>
     /// Visão de Hoje, usada pelo widget e pela seção Hoje: pendentes planejadas para hoje
     /// ou para datas anteriores, mais as concluídas na data local de hoje.
+    ///
+    /// Concluída sem data planejada fica de fora: ela nunca esteve em Hoje, e sim
+    /// nos lembretes ("Algum dia"), que é onde continua aparecendo riscada. Sem
+    /// isso, riscar um lembrete fazia o widget dizer "Tudo concluído por hoje".
     /// </summary>
     public static TaskListSnapshot Arrange(IEnumerable<TaskItem> all, DateOnly today)
     {
@@ -33,7 +37,8 @@ public static class TaskArranger
             .ToList();
 
         var completedToday = items
-            .Where(t => t.IsCompleted && string.Equals(t.CompletedLocalDate, todayText, StringComparison.Ordinal))
+            .Where(t => t.IsCompleted && t.PlannedDate is not null
+                        && string.Equals(t.CompletedLocalDate, todayText, StringComparison.Ordinal))
             .OrderBy(t => t.CompletedAtUtc ?? DateTime.MaxValue)
             .ThenBy(t => t.SortOrder)
             .ToList();
@@ -48,7 +53,7 @@ public static class TaskArranger
     }
 
     /// <summary>
-    /// Seção "Algum dia": tarefas sem data planejada. Concluídas continuam listadas
+    /// Seção "Algum dia": tarefas sem data planejada. No widget, são os lembretes. Concluídas continuam listadas
     /// no dia da conclusão, pela mesma regra de virada de dia das outras seções.
     ///
     /// V0.5: subtarefas ficam de fora. Elas já têm um lugar — o projeto ou a

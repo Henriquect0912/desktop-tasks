@@ -89,6 +89,7 @@ public sealed class WidgetController : IDisposable
         _viewModel.AddFieldFocusRequested += _window.FocusNewTaskField;
         _viewModel.OpenMainAppRequested += ShowMainApp;
         _viewModel.OpenDailyPlanRequested += ShowDailyPlan;
+        _viewModel.OpenClaudeChatRequested += OpenClaudeChat;
 
         // V0.2: o aplicativo principal organiza; o widget continua sendo só a execução do dia.
         _appViewModel = new MainAppViewModel(tasks, routines, containers, exams, examPlanning, planning, clock);
@@ -191,6 +192,8 @@ public sealed class WidgetController : IDisposable
     }
 
     /// <summary>Abre o aplicativo principal já na seção "Plano do dia".</summary>
+    private static void OpenClaudeChat() => ClaudeChat.Open();
+
     private void ShowDailyPlan()
     {
         _appViewModel.SelectedSection = AppSection.DailyPlan;
@@ -578,6 +581,7 @@ public sealed class WidgetController : IDisposable
         _viewModel.AddFieldFocusRequested -= _window.FocusNewTaskField;
         _viewModel.OpenMainAppRequested -= ShowMainApp;
         _viewModel.OpenDailyPlanRequested -= ShowDailyPlan;
+        _viewModel.OpenClaudeChatRequested -= OpenClaudeChat;
         _window.Close();
 
         _appViewModel.NewTaskFocusRequested -= _appWindow.FocusNewTaskField;

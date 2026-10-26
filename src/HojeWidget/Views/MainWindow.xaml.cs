@@ -409,7 +409,7 @@ public partial class MainWindow : Window
             return;
         }
 
-        var editing = Model.Items.FirstOrDefault(i => i.IsEditing);
+        var editing = Model.AllRows.FirstOrDefault(i => i.IsEditing);
         if (editing is not null)
         {
             MainViewModel.CancelEdit(editing);
@@ -417,7 +417,7 @@ public partial class MainWindow : Window
             return;
         }
 
-        var withMenu = Model.Items.FirstOrDefault(i => i.IsMenuOpen);
+        var withMenu = Model.AllRows.FirstOrDefault(i => i.IsMenuOpen);
         if (withMenu is not null)
         {
             withMenu.IsMenuOpen = false;
@@ -435,6 +435,13 @@ public partial class MainWindow : Window
         if (Model.IsAdding)
         {
             Model.CancelAdd();
+            e.Handled = true;
+            return;
+        }
+
+        if (Model.IsAddingReminder)
+        {
+            Model.CancelAddReminder();
             e.Handled = true;
         }
     }
@@ -455,6 +462,28 @@ public partial class MainWindow : Window
 
             case Key.Escape:
                 Model.CancelAdd();
+                e.Handled = true;
+                break;
+        }
+    }
+
+    private void NewReminderBox_KeyDown(object sender, KeyEventArgs e)
+    {
+        if (Model is null)
+        {
+            return;
+        }
+
+        switch (e.Key)
+        {
+            case Key.Enter:
+                Model.CommitAddReminder();
+                ScrollRemindersToEnd();
+                e.Handled = true;
+                break;
+
+            case Key.Escape:
+                Model.CancelAddReminder();
                 e.Handled = true;
                 break;
         }
@@ -486,7 +515,7 @@ public partial class MainWindow : Window
         }
 
         var open = !item.IsMenuOpen;
-        foreach (var other in Model.Items)
+        foreach (var other in Model.AllRows)
         {
             other.IsMenuOpen = false;
         }
@@ -541,6 +570,42 @@ public partial class MainWindow : Window
         }
     }
 
+    // ---------------- Lembretes ----------------
+
+    /// <summary>
+    /// Os lembretes não se reordenam por arrasto; um clique na lista só fecha o
+    /// menu de outra linha que tenha ficado aberto, como acontece em Hoje.
+    /// </summary>
+    private void RemindersHost_PreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
+    {
+        if (e.OriginalSource is DependencyObject source)
+        {
+            CloseMenusExcept(FindItemViewModel(source, RemindersHost));
+        }
+    }
+
+    /// <summary>
+    /// Leva a lista até o fim, onde o lembrete recém-criado entrou. Roda depois do
+    /// layout, quando ele já ocupa a sua linha.
+    /// </summary>
+    private void ScrollRemindersToEnd()
+        => Dispatcher.BeginInvoke(
+            new Action(() => RemindersScroll.ScrollToEnd()),
+            global::System.Windows.Threading.DispatcherPriority.Loaded);
+
+    private void CloseMenusExcept(TaskItemViewModel? keep)
+    {
+        if (Model is null)
+        {
+            return;
+        }
+
+        foreach (var other in Model.AllRows.Where(i => i.IsMenuOpen && !ReferenceEquals(i, keep)))
+        {
+            other.IsMenuOpen = false;
+        }
+    }
+
     // ---------------- Reordenacao manual ----------------
 
     private void TasksHost_PreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
@@ -553,15 +618,8 @@ public partial class MainWindow : Window
             return;
         }
 
-        var item = FindItemViewModel(source);
-
-        if (Model is not null)
-        {
-            foreach (var other in Model.Items.Where(i => i.IsMenuOpen && !ReferenceEquals(i, item)))
-            {
-                other.IsMenuOpen = false;
-            }
-        }
+        var item = FindItemViewModel(source, TasksHost);
+        CloseMenusExcept(item);
 
         if (item is null || !item.CanReorder || item.IsEditing)
         {
@@ -734,11 +792,11 @@ public partial class MainWindow : Window
 
     // ---------------- Utilitarios de arvore visual ----------------
 
-    private TaskItemViewModel? FindItemViewModel(DependencyObject source)
+    private static TaskItemViewModel? FindItemViewModel(DependencyObject source, DependencyObject host)
     {
         var current = source;
 
-        while (current is not null && !ReferenceEquals(current, TasksHost))
+        while (current is not null && !ReferenceEquals(current, host))
         {
             if (current is FrameworkElement { DataContext: TaskItemViewModel item })
             {

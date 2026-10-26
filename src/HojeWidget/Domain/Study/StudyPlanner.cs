@@ -84,8 +84,9 @@ public sealed record StudyPlanProposal(
 /// - a data da prova.
 ///
 /// A janela de estudo não começa hoje só porque hoje existe. Ela é calculada de
-/// trás para frente: o plano ocupa os últimos dias necessários no ritmo
-/// confortável, e o primeiro deles é a **data-limite para começar** — depois
+/// trás para frente: o plano ocupa os últimos dias em que tudo cabe no ritmo
+/// confortável — recuando um dia por vez até caber de verdade, não só na conta
+/// dos minutos — e o primeiro deles é a **data-limite para começar**. Depois
 /// disso o cronograma aperta. Ninguém começa hoje a estudar para uma prova
 /// daqui a dois meses.
 ///
@@ -152,27 +153,33 @@ public static class StudyPlanner
         DateOnly? margin = usable.Count >= 2 ? usable[^1] : null;
         var workDays = margin is null ? usable : usable[..^1];
 
-        // De trás para frente: quantos dos últimos dias bastam, no ritmo
-        // confortável, para caber tudo. O primeiro deles é a data-limite para
-        // começar.
-        var needed = candidates.Sum(n => n.EstimatedMinutes ?? 0);
-        var studyWindow = LatestWindow(workDays, byDate, policy, needed);
-        DateOnly? start = studyWindow.Count > 0 ? studyWindow[0] : null;
+        // Um item indivisível maior que o máximo contínuo não cabe em janela
+        // nenhuma. Ele vira conflito já, em vez de arrastar o plano inteiro para
+        // trás à procura de um lugar que não existe.
+        var unplaceable = candidates
+            .Where(n => !n.CanSplit && n.EstimatedMinutes > policy.MaxSessionMinutes)
+            .ToList();
+        var fillable = candidates.Except(unplaceable).ToList();
 
-        // Primeira tentativa: a janela curta, no ritmo confortável. É o plano que
-        // o usuário quer na maioria das vezes — começar tarde e ir tranquilo.
-        var result = Fill(graph, policy, candidates, studyWindow, byDate, policy.ComfortableDailyMinutes);
+        // De trás para frente: a janela mais curta, encostada na véspera, em que
+        // tudo cabe no ritmo confortável. O primeiro dia dela é a data-limite
+        // para começar — começando um dia depois, já não cabe nesse ritmo.
+        var (studyWindow, result) = LatestFit(
+            graph, policy, fillable, workDays, byDate, policy.ComfortableDailyMinutes);
 
-        // Não coube nesse ritmo: abre a janela inteira e sobe até o máximo
-        // diário. É exatamente isto que "apertar o cronograma" quer dizer.
+        // Nem a janela inteira dá no ritmo confortável: sobe até o máximo diário.
+        // É isto que "apertar o cronograma" quer dizer — e mesmo apertado, o
+        // plano continua começando o mais tarde que ainda cabe.
         if (result.Pending.Count > 0)
         {
-            result = Fill(graph, policy, candidates, workDays, byDate, policy.MaxDailyMinutes);
-            start = workDays.Count > 0 ? workDays[0] : null;
+            (studyWindow, result) = LatestFit(
+                graph, policy, fillable, workDays, byDate, policy.MaxDailyMinutes);
 
             notes.Add($"O conteúdo não cabe na meta confortável de {Estimate.Format(policy.ComfortableDailyMinutes)} " +
                       $"por dia; alguns dias vão até o máximo de {Estimate.Format(policy.MaxDailyMinutes)}.");
         }
+
+        DateOnly? start = studyWindow.Count > 0 ? studyWindow[0] : null;
 
         // Ainda não coube: a véspera deixa de ser margem.
         if (result.Pending.Count > 0 && margin is not null)
@@ -180,7 +187,7 @@ public static class StudyPlanner
             notes.Add($"O conteúdo não coube até {LocalDate.ToShortText(workDays[^1])}; " +
                       $"a véspera ({LocalDate.ToShortText(margin.Value)}) precisou receber conteúdo novo.");
 
-            result = Fill(graph, policy, candidates, usable, byDate, policy.MaxDailyMinutes);
+            result = Fill(graph, policy, fillable, usable, byDate, policy.MaxDailyMinutes);
             start = usable.Count > 0 ? usable[0] : null;
             margin = null;
         }
@@ -189,8 +196,15 @@ public static class StudyPlanner
         {
             conflicts.Add(new StudyConflict(node.Id, node.Title, node.CanSplit
                 ? $"Faltam {Estimate.Format(missing)} sem dia disponível antes da prova."
-                : $"{Estimate.Format(missing)} não cabem numa sessão só " +
-                  $"(o máximo contínuo é {Estimate.Format(policy.MaxSessionMinutes)}) e este item não pode ser dividido."));
+                : $"Nenhum dia antes da prova tem {Estimate.Format(missing)} livres, " +
+                  "e este item não pode ser dividido."));
+        }
+
+        foreach (var node in unplaceable)
+        {
+            conflicts.Add(new StudyConflict(node.Id, node.Title,
+                $"{Estimate.Format(node.EstimatedMinutes!.Value)} não cabem numa sessão só " +
+                $"(o máximo contínuo é {Estimate.Format(policy.MaxSessionMinutes)}) e este item não pode ser dividido."));
         }
 
         // Nada é descartado em silêncio: um item sem estimativa também é dito.
@@ -202,7 +216,12 @@ public static class StudyPlanner
         return new StudyPlanProposal(result.Sessions, conflicts, waiting, notes, margin, start, required, possible);
     }
 
-    private static (List<PlannedStudySession> Sessions, List<(StudyNode Node, int Missing)> Pending) Fill(
+    /// <summary>O que uma tentativa de preenchimento colocou e o que ficou de fora.</summary>
+    private readonly record struct FillResult(
+        List<PlannedStudySession> Sessions,
+        List<(StudyNode Node, int Missing)> Pending);
+
+    private static FillResult Fill(
         StudyGraph graph,
         ExamStudyPolicy policy,
         IReadOnlyList<StudyNode> candidates,
@@ -216,7 +235,7 @@ public static class StudyPlanner
         if (days.Count == 0 || candidates.Count == 0)
         {
             pending.AddRange(candidates.Select(n => (n, n.EstimatedMinutes ?? 0)));
-            return (sessions, pending);
+            return new FillResult(sessions, pending);
         }
 
         var totalNeeded = candidates.Sum(n => n.EstimatedMinutes ?? 0);
@@ -356,7 +375,7 @@ public static class StudyPlanner
             }
         }
 
-        return (sessions.OrderBy(s => s.Date).ThenBy(s => s.SessionIndex).ToList(), pending);
+        return new FillResult(sessions.OrderBy(s => s.Date).ThenBy(s => s.SessionIndex).ToList(), pending);
     }
 
     /// <summary>
@@ -454,38 +473,75 @@ public static class StudyPlanner
     }
 
     /// <summary>
-    /// Os últimos dias que bastam para o trabalho caber no ritmo confortável.
+    /// A janela mais curta, encostada no último dia de trabalho, em que tudo cabe
+    /// com o teto diário dado.
     ///
-    /// Percorre os dias de trás para frente somando o que cabe em cada um — o
-    /// menor entre a folga do dia e a meta confortável — até alcançar o total.
-    /// O primeiro dia do resultado é a data-limite para começar: um dia depois
-    /// dele já obriga a passar da meta.
+    /// Começa pela conta dos minutos, que é o mínimo possível, e recua um dia de
+    /// cada vez até o preenchimento fechar. A conta sozinha não basta: uma sessão
+    /// tem tamanho máximo, a sobra de meia hora de um dia não comporta uma sessão
+    /// inteira, e um item só começa depois do que vem antes dele. Antes, quando a
+    /// conta não fechava, o plano saltava direto para "começar hoje" — e uma prova
+    /// daqui a três semanas terminava de ser estudada duas semanas antes.
+    ///
+    /// Quando nem a janela inteira dá, devolve a janela inteira e o que faltou.
     /// </summary>
-    private static List<DateOnly> LatestWindow(
+    private static (List<DateOnly> Window, FillResult Result) LatestFit(
+        StudyGraph graph,
+        ExamStudyPolicy policy,
+        IReadOnlyList<StudyNode> candidates,
         IReadOnlyList<DateOnly> workDays,
         IReadOnlyDictionary<DateOnly, DayCapacity> byDate,
-        ExamStudyPolicy policy,
+        int ceilingMinutes)
+    {
+        var needed = candidates.Sum(n => n.EstimatedMinutes ?? 0);
+        var size = MinimumDays(workDays, byDate, ceilingMinutes, needed);
+
+        List<DateOnly> window = workDays.ToList();
+        FillResult result = Fill(graph, policy, candidates, window, byDate, ceilingMinutes);
+
+        for (; size < workDays.Count; size++)
+        {
+            var shorter = workDays.Skip(workDays.Count - size).ToList();
+            var attempt = Fill(graph, policy, candidates, shorter, byDate, ceilingMinutes);
+
+            if (attempt.Pending.Count == 0)
+            {
+                return (shorter, attempt);
+            }
+        }
+
+        return (window, result);
+    }
+
+    /// <summary>
+    /// Quantos dos últimos dias de trabalho bastam, só pela conta dos minutos,
+    /// para o total caber com o teto dado. É o ponto de partida de
+    /// <see cref="LatestFit"/>: menos que isso não cabe de jeito nenhum.
+    /// </summary>
+    private static int MinimumDays(
+        IReadOnlyList<DateOnly> workDays,
+        IReadOnlyDictionary<DateOnly, DayCapacity> byDate,
+        int ceilingMinutes,
         int needed)
     {
-        if (workDays.Count == 0 || needed <= 0)
+        if (needed <= 0)
         {
-            return workDays.ToList();
+            return Math.Min(1, workDays.Count);
         }
 
         var accumulated = 0;
 
         for (var i = workDays.Count - 1; i >= 0; i--)
         {
-            accumulated += Math.Min(byDate[workDays[i]].GeneralRemaining, policy.ComfortableDailyMinutes);
+            accumulated += Math.Min(byDate[workDays[i]].GeneralRemaining, ceilingMinutes);
 
             if (accumulated >= needed)
             {
-                return workDays.Skip(i).ToList();
+                return workDays.Count - i;
             }
         }
 
-        // Nem usando todos os dias no ritmo confortável dá: a janela é inteira.
-        return workDays.ToList();
+        return workDays.Count;
     }
 
     private static List<DateOnly> Days(DateOnly from, DateOnly to)

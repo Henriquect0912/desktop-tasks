@@ -67,6 +67,19 @@ public class BindingDiagnosticsTests
                     content.UpdateLayout();
                 }
 
+                // O widget também: as duas listas, o campo de lembrete e o menu do "+" abertos.
+                fixture.Tasks.Add("Renovar passaporte", plannedDate: null);
+                var widgetModel = new MainViewModel(
+                    fixture.Tasks, fixture.Routines, fixture.Exams, fixture.Planning, fixture.Review, fixture.Clock);
+                widgetModel.BeginAddReminder();
+                widgetModel.ToggleAddMenu();
+
+                var widget = new MainWindow { DataContext = widgetModel };
+                var widgetContent = (FrameworkElement)widget.Content;
+                widgetContent.Measure(new Size(410, 300));
+                widgetContent.Arrange(new Rect(0, 0, 410, 300));
+                widgetContent.UpdateLayout();
+
                 return listener.Messages;
             }
             finally

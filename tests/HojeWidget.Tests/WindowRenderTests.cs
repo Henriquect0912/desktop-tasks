@@ -36,6 +36,10 @@ public class WindowRenderTests
             fixture.Tasks.SetCompleted(comida.Id, true);
             fixture.Routines.Create("Academia", HojeWidget.Models.RecurrenceType.Daily);
 
+            // Lembretes: o terço de baixo do widget precisa desenhar as linhas.
+            fixture.Tasks.Add("Renovar passaporte", plannedDate: null);
+            fixture.Tasks.Add("Comprar pilha para o controle", plannedDate: null);
+
             // V0.5 a V0.7: cada seção nova precisa ter conteúdo de verdade para
             // que o desenho prove alguma coisa.
             var projeto = fixture.Containers.Create(
@@ -68,6 +72,19 @@ public class WindowRenderTests
 
             ThemeManager.Apply(AppTheme.Black);
             var black = Render(content, "preto.png");
+
+            // A divisão dois terços / um terço é medida no próprio desenho.
+            var reminders = (FrameworkElement)window.FindName("RemindersHost");
+            var reminderTop = reminders.TransformToAncestor(content).Transform(new Point(0, 0)).Y;
+            var remindersDrawn = reminders.ActualHeight > 0 && viewModel.Reminders.Count == 2;
+
+            // O menu do "+", com as três opções.
+            viewModel.ToggleAddMenu();
+            Render(content, "preto-menu.png");
+            var claudeButton = (FrameworkElement)window.FindName("ClaudeChatButton");
+            var claudeTop = claudeButton.TransformToAncestor(content).Transform(new Point(0, 0)).Y;
+            var menuDrawn = claudeButton.ActualHeight > 0 && claudeTop + claudeButton.ActualHeight <= Height;
+            viewModel.ToggleAddMenu();
 
             ThemeManager.Apply(AppTheme.Translucent);
             var translucent = Render(content, "translucido.png");
@@ -118,6 +135,7 @@ public class WindowRenderTests
             var distribution = Render(appContent, "app-delivery-plan.png", 980, 640);
 
             return (Black: black, Translucent: translucent, Sections: sections,
+                    ReminderTop: reminderTop, RemindersDrawn: remindersDrawn, MenuDrawn: menuDrawn,
                     Inline: inline, Panel: panel, Proposal: proposal,
                     Distribution: distribution, StartText: appViewModel.Proposal.StartText);
         });
@@ -134,6 +152,12 @@ public class WindowRenderTests
             Assert.True(tema.LightPixels > 200, $"{nome}: esperava texto claro, veio {tema.LightPixels} pixels");
             Assert.InRange(tema.DominantLuminance, 0, 40);
         }
+
+        // Os lembretes começam depois de dois terços da altura — não antes.
+        Assert.True(report.RemindersDrawn, "a lista de lembretes não foi desenhada");
+        Assert.InRange(report.ReminderTop, Height * 0.60, Height * 0.80);
+
+        Assert.True(report.MenuDrawn, "a opção do Claude no menu do + não foi desenhada inteira");
 
         // Os dois temas são distintos entre si.
         Assert.True(report.Translucent.DominantLuminance > report.Black.DominantLuminance,

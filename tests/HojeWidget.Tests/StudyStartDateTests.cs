@@ -192,4 +192,119 @@ public class StudyStartDateTests
         Assert.True(inicioDaLista >= fimDaTeoria);
         Assert.True(plan.RecommendedStart > Today, "a janela deveria ter recuado para perto da prova");
     }
+
+    /// <summary>
+    /// A prova MTM-25 do usuário: três aulas e uma lista que vem depois delas,
+    /// 10h no total, meta de 2h por dia, sessão de no máximo 1h30.
+    /// </summary>
+    private static StudyGraph Mtm25()
+    {
+        StudyNode Item(string id, string title, int minutes, long order, StudyNodeType type = StudyNodeType.Theory)
+            => new()
+            {
+                Id = id,
+                ExamId = "mtm25",
+                NodeType = type,
+                Title = title,
+                EstimatedMinutes = minutes,
+                CanSplit = true,
+                MasteryLevel = Mastery.NotStudied,
+                SortOrder = order,
+            };
+
+        StudyDependency After(string id, string node, string prerequisite)
+            => new() { Id = id, ExamId = "mtm25", NodeId = node, DependsOnNodeId = prerequisite };
+
+        return new StudyGraph(
+            new[]
+            {
+                Item("a5", "Aula 5", 120, 1),
+                Item("a6", "Aula 6", 180, 2),
+                Item("a7", "Aula 7", 120, 3),
+                Item("l2", "Lista 2", 180, 4, StudyNodeType.ExerciseList),
+            },
+            new[]
+            {
+                After("d1", "l2", "a5"),
+                After("d2", "l2", "a6"),
+                After("d3", "l2", "a7"),
+            });
+    }
+
+    [Fact]
+    public void ProvaDaquiATresSemanasNaoTerminaDuasSemanasAntes()
+    {
+        // O caso relatado: hoje 26/10, prova em 16/11. O plano terminava em
+        // 31/10, porque a conta dos minutos dava cinco dias, o preenchimento não
+        // fechava neles — sobras de meia hora e a lista esperando as aulas — e
+        // o planejador saltava direto para "começar hoje" no ritmo máximo.
+        var hoje = new DateOnly(2026, 10, 26);
+        var prova = new DateOnly(2026, 11, 16);
+        var capacidade = Enumerable.Range(0, 21)
+            .Select(i => new DayCapacity(hoje.AddDays(i), 480, 0))
+            .ToList();
+
+        var plan = StudyPlanner.Plan(Mtm25(), new ExamStudyPolicy(120, 180, 90), hoje, prova, capacidade);
+
+        // Encosta na margem: estuda de 09/11 a 14/11, e 15/11 fica para revisão.
+        Assert.Equal(new DateOnly(2026, 11, 15), plan.MarginDate);
+        Assert.Equal(new DateOnly(2026, 11, 9), plan.RecommendedStart);
+        Assert.Equal(new DateOnly(2026, 11, 14), plan.Sessions.Max(s => s.Date));
+        Assert.Equal(600, plan.Sessions.Sum(s => s.Minutes));
+
+        // No ritmo confortável de verdade — e sem aviso dizendo o contrário.
+        Assert.All(
+            plan.Sessions.GroupBy(s => s.Date),
+            dia => Assert.True(dia.Sum(s => s.Minutes) <= 120, $"{dia.Key} passou de 2h"));
+        Assert.Empty(plan.Notes);
+
+        // A lista continua depois das três aulas.
+        var fimDasAulas = plan.Sessions.Where(s => s.NodeId != "l2").Max(s => s.Date);
+        Assert.True(plan.Sessions.Where(s => s.NodeId == "l2").Min(s => s.Date) >= fimDasAulas);
+    }
+
+    [Fact]
+    public void ComecarUmDiaDepoisDoLimiteRealmenteAperta()
+    {
+        // A frase do plano é "começando depois disso, o cronograma aperta". Ela
+        // tem de ser verdade: começando em 10/11, já não cabe em 2h por dia.
+        var prova = new DateOnly(2026, 11, 16);
+        var capacidade = Enumerable.Range(0, 21)
+            .Select(i => new DayCapacity(new DateOnly(2026, 10, 26).AddDays(i), 480, 0))
+            .ToList();
+
+        var umDiaDepois = StudyPlanner.Plan(
+            Mtm25(), new ExamStudyPolicy(120, 180, 90), new DateOnly(2026, 11, 10), prova, capacidade);
+
+        Assert.Contains(umDiaDepois.Notes, n => n.Contains("meta confortável"));
+        Assert.Contains(
+            umDiaDepois.Sessions.GroupBy(s => s.Date),
+            dia => dia.Sum(s => s.Minutes) > 120);
+    }
+
+    [Fact]
+    public void ItemQueNuncaCabeNaoPuxaOPlanoParaHoje()
+    {
+        // Um simulado de 2h que não pode ser dividido nunca cabe numa sessão de
+        // no máximo 1h30. Ele vira conflito — e o resto do plano continua
+        // encostado na prova, em vez de ser arrastado para hoje procurando um
+        // lugar que não existe.
+        var simulado = Node("sim", "Simulado", 120, order: 0);
+        simulado.CanSplit = false;
+
+        var graph = new StudyGraph(
+            new[] { simulado, Node("aula", "Aula", 120, order: 1) },
+            Array.Empty<StudyDependency>());
+
+        var plan = StudyPlanner.Plan(
+            graph, new ExamStudyPolicy(120, 180, 90), Today, Today.AddDays(30), Capacity(30));
+
+        Assert.True(plan.RecommendedStart > Today.AddDays(20), $"começou em {plan.RecommendedStart}");
+        Assert.NotNull(plan.MarginDate);
+        Assert.DoesNotContain(plan.Sessions, s => s.NodeId == "sim");
+
+        var conflito = Assert.Single(plan.Conflicts);
+        Assert.Equal("sim", conflito.NodeId);
+        Assert.Contains("numa sessão só", conflito.Message);
+    }
 }
